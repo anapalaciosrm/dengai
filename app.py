@@ -442,6 +442,29 @@ def app_base_url():
         return "http://localhost:8501"
 
 
+PUBLIC_URL_FILE = OUTPUTS / "public_url.txt"   # last tunnel or deployed address, kept on this computer
+
+
+def default_base():
+    """Address for report links: the current page if it is public (a tunnel or a deployed app),
+    else the last public address saved, else this computer's address."""
+    current = app_base_url()
+    if not local_host(urlparse(current).netloc):
+        return current
+    if PUBLIC_URL_FILE.exists():
+        saved_url = PUBLIC_URL_FILE.read_text().strip()
+        if saved_url:
+            return clean_base(saved_url)
+    return current
+
+
+def remember_base(url):
+    """Save a public address so links keep using it after a restart or reload."""
+    if url and not local_host(urlparse(url).netloc):
+        OUTPUTS.mkdir(exist_ok=True)
+        PUBLIC_URL_FILE.write_text(url)
+
+
 st.markdown("<style>.block-container{padding-top:2rem;padding-bottom:2rem}</style>", unsafe_allow_html=True)
 brand_css()
 brand_header("<b>AI finds the breeding sites. Dengai plans the response.</b><br>"
@@ -591,14 +614,15 @@ with tab_plan:
             st.caption("Each team gets its stops in order with a free Google Maps link per stop, and a "
                        "link to report at the end of the day. Add the leader's WhatsApp number once; "
                        "it is saved on this computer.")
-            ss.setdefault("base_url", app_base_url())
+            ss.setdefault("base_url", default_base())
             base = st.text_input("Address teams' phones open for reports", key="base_url",
                                  help="Use the Network URL Streamlit prints (phones on the same Wi-Fi), "
                                       "or the address of a deployed app.")
             if "localhost" in base or "127.0.0.1" in base:
-                st.caption("⚠️ Phones cannot open localhost. Use the Network URL from the terminal, "
-                           "for example http://10.34.185.35:8501.")
+                st.caption("⚠️ Phones cannot open localhost. Paste your tunnel address "
+                           "(https://...trycloudflare.com) or the Network URL from the terminal.")
             base = clean_base(base)
+            remember_base(base)
             plan_id = saved.get("plan_id", "default")
             contacts = load_contacts()
             site_info = sites.set_index("site_id")
@@ -768,15 +792,15 @@ with tab_day:
     team_list = saved["teams"] or []
     plan = load_csv(OUTPUTS / "plan_optimized.csv") if plan_ready else None
     contacts = load_contacts()
-    base = clean_base(ss.get("base_url") or app_base_url())
+    base = clean_base(ss.get("base_url") or default_base())
 
     head, refresh = st.columns([5, 1])
     head.markdown(f"**1. Send each team its report link** · {len(received)} of {len(team_list)} reports received")
     if refresh.button("Check for new reports", use_container_width=True):
         st.rerun()
     if "localhost" in base or "127.0.0.1" in base:
-        st.warning("Links point to localhost, which phones cannot open. Set the address in Today's plan "
-                   "(Team routes) to the Network URL from the terminal.")
+        st.warning("Links point to localhost, which phones cannot open. Paste your tunnel address "
+                   "(https://...trycloudflare.com) in Today's plan, Team routes. It is remembered after that.")
 
     all_links = []
     for t in team_list:
