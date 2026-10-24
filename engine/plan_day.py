@@ -154,6 +154,7 @@ def plan_day(puskesmas, seconds, net=None):
     import route_paths as R
 
     cfg, sites, travel, _ = P.load_inputs()
+    sites, feedback_note = R2.apply_feedback(sites, cfg)   # yesterday's reports, if saved
     teams, notes = T.form_teams(puskesmas, cfg)
     if net is None:
         net = R.load_network()
@@ -201,7 +202,8 @@ def plan_day(puskesmas, seconds, net=None):
 
     with open(SETTINGS_FILE, "w") as f:
         json.dump({"puskesmas": puskesmas, "teams": teams, "notes": notes,
-                   "solver_seconds": seconds, "plan_id": R2.new_plan_id()}, f, indent=2)
+                   "solver_seconds": seconds, "plan_id": R2.new_plan_id(),
+                   "feedback_note": feedback_note}, f, indent=2)
     return summaries, teams, notes
 
 

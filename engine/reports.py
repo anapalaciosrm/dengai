@@ -85,3 +85,108 @@ def tally(reports):
         for status in r["stops"].values():
             counts[status] = counts.get(status, 0) + 1
     return counts
+
+
+# ---------- daily report and feedback into tomorrow's plan ----------
+
+DONE = {"breeding", "clear", "false", "cleared"}       # inspected: no need to go back tomorrow
+MISSED = {"no_access", "not_reached"}                  # carry over to tomorrow
+FEEDBACK_FILE = C.OUTPUTS / "tomorrow.json"
+
+
+def daily_report(plan, received, sites, teams, labels):
+    """Numbers, missed places, detector accuracy by type, and a text version of the day.
+
+    plan: today's optimized plan table; received: {team_id: report}; sites: indexed by site_id;
+    teams: team dicts; labels: {status code: short label}.
+    """
+    import pandas as pd
+
+    rows = []
+    for t in teams:
+        r = received.get(t["team_id"])
+        team = plan[plan["team_id"] == t["team_id"]].sort_values("visit_order")
+        for n, site in enumerate(team["site_id"], start=1):
+            status = r["stops"].get(site) if r else None
+            rows.append({"team_id": t["team_id"], "puskesmas": t["puskesmas"], "stop": n, "site_id": site,
+                         "site_type": sites.at[site, "site_type"] if site in sites.index else "",
+                         "priority": sites.at[site, "priority"] if site in sites.index else None,
+                         "lat": sites.at[site, "lat"] if site in sites.index else None,
+                         "lon": sites.at[site, "lon"] if site in sites.index else None,
+                         "status": status})
+    stops = pd.DataFrame(rows)
+    reported = stops[stops["status"].notna()] if len(stops) else stops
+    missed = reported[reported["status"].isin(MISSED)].copy() if len(reported) else reported
+    if len(missed):
+        missed["reason"] = missed["status"].map(labels)
+        missed = missed.sort_values("priority", ascending=False)
+
+    inspected = reported[reported["status"].isin(DONE)] if len(reported) else reported
+    accuracy = []
+    for kind, g in inspected.groupby("site_type") if len(inspected) else []:
+        wrong = int((g["status"] == "false").sum())
+        accuracy.append({"Site type": kind, "Inspected": len(g), "Wrong detections": wrong,
+                         "Real": len(g) - wrong, "Share real": f"{(len(g) - wrong) / len(g):.0%}",
+                         "Breeding found": int((g["status"] == "breeding").sum())})
+    accuracy = pd.DataFrame(accuracy)
+
+    numbers = {
+        "teams_reported": len(received), "teams_total": len(teams),
+        "planned": len(stops), "reported": len(reported), "inspected": len(inspected),
+        "breeding": int((reported["status"] == "breeding").sum()) if len(reported) else 0,
+        "wrong": int((reported["status"] == "false").sum()) if len(reported) else 0,
+        "cleared": int((reported["status"] == "cleared").sum()) if len(reported) else 0,
+        "missed": len(missed),
+    }
+
+    text = [f"Dengai daily report, {datetime.now():%d %B %Y}", "",
+            f"Teams reported: {numbers['teams_reported']} of {numbers['teams_total']}",
+            f"Sites inspected: {numbers['inspected']} of {numbers['planned']} planned",
+            f"Breeding found: {numbers['breeding']}",
+            f"Already cleared by residents: {numbers['cleared']}",
+            f"Wrong detections: {numbers['wrong']}",
+            f"Missed (carry over): {numbers['missed']}", ""]
+    if len(accuracy):
+        text.append("Detector accuracy by site type:")
+        for a in accuracy.to_dict("records"):
+            text.append(f"  {a['Site type']}: {a['Real']} of {a['Inspected']} real ({a['Share real']})")
+        text.append("")
+    if len(missed):
+        text.append("Missed places:")
+        for m in missed.to_dict("records"):
+            text.append(f"  {m['site_id']} ({m['site_type']}), team {m['team_id']}: {m['reason']}")
+        text.append("")
+    notes = [(tid, r["summary"], r.get("leader", "")) for tid, r in sorted(received.items()) if r.get("summary")]
+    if notes:
+        text.append("What the teams said:")
+        for tid, summary, leader in notes:
+            text.append(f"  Team {tid}{' (' + leader + ')' if leader else ''}: {summary}")
+    return {"numbers": numbers, "stops": stops, "missed": missed, "accuracy": accuracy,
+            "text": "\n".join(text)}
+
+
+def save_feedback(plan_id, done_sites, missed_sites):
+    """Tell tomorrow's plan which sites were inspected (skip) and which were missed (go first)."""
+    FEEDBACK_FILE.write_text(json.dumps({"from_plan": plan_id, "done": sorted(done_sites),
+                                         "missed": sorted(missed_sites),
+                                         "saved": datetime.now().isoformat(timespec="minutes")}, indent=2))
+
+
+def load_feedback():
+    return json.loads(FEEDBACK_FILE.read_text()) if FEEDBACK_FILE.exists() else None
+
+
+def apply_feedback(sites, cfg):
+    """Drop sites inspected on the last reported day; raise the priority of missed ones.
+    Returns (sites, note) and changes nothing if no feedback was saved."""
+    fb = load_feedback()
+    if not fb:
+        return sites, ""
+    boost = cfg.get("carryover_boost", 1.5)
+    done = [s for s in fb["done"] if s in sites.index]
+    missed = [s for s in fb["missed"] if s in sites.index]
+    sites = sites.drop(index=done).copy()
+    sites.loc[missed, "priority"] = sites.loc[missed, "priority"] * boost
+    note = (f"From the last reports: {len(done)} inspected site(s) skipped, "
+            f"{len(missed)} missed site(s) moved up (priority × {boost:g}).")
+    return sites, note

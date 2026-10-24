@@ -40,3 +40,4 @@ larvicide_idr_per_site,5000,IDR per site,placeholder,Larvicide used per real bre
 idr_per_usd,16000,IDR per USD,placeholder,Exchange rate for the USD column; Lara to update
 volunteer_stipend_idr_per_day,0,IDR per day,placeholder,Transport or meal allowance per volunteer; 0 if unpaid; team to source
 team_needs_paid_lead,1,yes or no,design choice,1 = every team has a paid worker as lead (volunteers join them); 0 = volunteer only teams allowed
+carryover_boost,1.5,multiplier,design choice,"Priority multiplier for sites a team could not reach or get into, so they go first the next day"

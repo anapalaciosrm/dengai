@@ -414,6 +414,8 @@ with tab_plan:
         st.rerun()
 
     if plan_ready and not stale:
+        if saved.get("feedback_note"):
+            st.info(saved["feedback_note"])
         summary = load_json(OUTPUTS / "summary_optimized.json")
         costs = load_csv(OUTPUTS / "costs_optimized.csv")
         plan = load_csv(OUTPUTS / "plan_optimized.csv")
@@ -513,13 +515,16 @@ with tab_plan:
                                                  report_link=report_url)
                     if name:
                         text = text.replace(f"*Dengai: Team {team_id}*", f"*Dengai: Team {team_id}*\nHi {name}!", 1)
-                    x, y, z = st.columns(3)
+                    x, z = st.columns(2)
                     x.link_button(f"Send to {name or 'team'}" if phone else "Share on WhatsApp",
                                   N.whatsapp_link(text, phone), type="primary" if phone else "secondary",
                                   use_container_width=True)
-                    y.link_button("Preview route", links[0], use_container_width=True)
                     z.download_button("Download", text, file_name=f"team_{team_id}.txt",
                                       key=f"dl_{team_id}", use_container_width=True)
+                    parts = st.columns(len(links))
+                    for k, (col, link) in enumerate(zip(parts, links), start=1):
+                        col.link_button("Route in Google Maps" if len(links) == 1 else f"Route part {k}",
+                                        link, use_container_width=True)
                     r1, r2 = st.columns(2)
                     r1.link_button("Send end of day link", N.whatsapp_link(
                         N.report_message(team_id, name, report_url), phone), use_container_width=True)
@@ -678,6 +683,71 @@ with tab_day:
                                N.whatsapp_link(N.report_message(team_id, person.get("name", ""), link),
                                                person.get("phone")))
                 st.text_area("Or paste the team's WhatsApp reply here", key=f"debrief_{team_id}", height=80)
+
+    if received and plan is not None:
+        st.divider()
+        st.markdown("### Daily report")
+        rep = RP.daily_report(plan, received, sites.set_index("site_id"), team_list, SHORT_STATUS)
+        num = rep["numbers"]
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Sites inspected", f"{num['inspected']} of {num['planned']}")
+        m2.metric("Breeding found", num["breeding"])
+        m3.metric("Cleared by residents", num["cleared"])
+        m4.metric("Wrong detections", num["wrong"])
+        m5.metric("Missed places", num["missed"])
+        if num["teams_reported"] < num["teams_total"]:
+            st.caption(f"{num['teams_total'] - num['teams_reported']} team(s) have not reported yet; "
+                       "their stops are not counted.")
+
+        miss_col, acc_col = st.columns([3, 2], gap="large")
+        with miss_col:
+            st.markdown("#### Missed places")
+            missed = rep["missed"]
+            if len(missed):
+                mm = folium.Map(location=[sites["lat"].mean(), sites["lon"].mean()], zoom_start=15)
+                mm.fit_bounds([[sites["lat"].min(), sites["lon"].min()], [sites["lat"].max(), sites["lon"].max()]])
+                if boundary is not None:
+                    folium.GeoJson(boundary, style_function=lambda _: {"color": "#333", "weight": 2,
+                                                                       "fill": False}).add_to(mm)
+                for m in missed.to_dict("records"):
+                    folium.Marker([m["lat"], m["lon"]], tooltip=f"{m['site_id']} ({m['site_type']}): {m['reason']}, "
+                                  f"team {m['team_id']}",
+                                  icon=folium.Icon(color="orange" if m["status"] == "no_access" else "red",
+                                                   icon="exclamation-sign")).add_to(mm)
+                st_folium(mm, height=320, use_container_width=True, key="missed_map", returned_objects=[])
+                st.dataframe(missed[["site_id", "site_type", "priority", "team_id", "reason"]].rename(columns={
+                    "site_id": "Site", "site_type": "Type", "priority": "Priority", "team_id": "Team",
+                    "reason": "Why"}), hide_index=True, width="stretch")
+            else:
+                st.caption("Every reported stop was reached.")
+        with acc_col:
+            st.markdown("#### Detector accuracy")
+            if len(rep["accuracy"]):
+                st.dataframe(rep["accuracy"], hide_index=True, width="stretch")
+                st.caption("Share of inspected detections that were real breeding sites, by type. "
+                           "Over several days this is how the confidence values get updated.")
+            notes_ = [(tid, r) for tid, r in sorted(received.items()) if r.get("summary")]
+            if notes_:
+                st.markdown("#### What the teams said")
+                for tid, r in notes_:
+                    st.markdown(f"**Team {tid}**{' (' + r['leader'] + ')' if r.get('leader') else ''}: {r['summary']}")
+
+        done = rep["stops"].loc[rep["stops"]["status"].isin(RP.DONE), "site_id"].tolist()
+        missed_ids = rep["missed"]["site_id"].tolist() if len(rep["missed"]) else []
+        b1, b2, b3 = st.columns(3)
+        if b1.button("Use for tomorrow's plan", type="primary", use_container_width=True,
+                     help="Tomorrow's routes skip the sites inspected today and put missed places first."):
+            RP.save_feedback(plan_id, done, missed_ids)
+            st.success(f"Saved. Tomorrow's plan will skip {len(done)} inspected site(s) and move "
+                       f"{len(missed_ids)} missed place(s) up. Generate team routes to see it.")
+        b2.download_button("Download report", rep["text"], file_name=f"dengai_report_{date.today()}.txt",
+                           use_container_width=True)
+        fb = RP.load_feedback()
+        if fb and b3.button("Clear tomorrow's carry over", use_container_width=True):
+            RP.FEEDBACK_FILE.unlink(missing_ok=True)
+            st.rerun()
+        with st.expander("Report text"):
+            st.code(rep["text"], language=None)
 
     general = st.text_area("Notes from the coordinator", key="debrief_general", height=70)
     if st.button("Save today's debrief", type="primary"):

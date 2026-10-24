@@ -63,21 +63,23 @@ def team_message(team_id, team, start_name, start_latlon, cfg, sites=None, title
     links = maps_links(points, cfg.get("travel_mode", "walk"), int(cfg.get("nav_max_waypoints", 9)))
     day_start = cfg.get("day_start", "08:00")
 
-    mode = cfg.get("travel_mode", "walk")
     lines = [f"*{title}: Team {team_id}*",
-             f"{len(team)} sites. Start and finish: {start_name}.",
-             "Tap a stop's link to navigate there from where you are.", ""]
+             f"{len(team)} sites. Start and finish: {start_name}.", ""]
     for n, row in enumerate(team.itertuples(), start=1):
         kind = ""
         if sites is not None and row.site_id in sites.index:
             kind = f" {sites.at[row.site_id, 'site_type']}"
         lines.append(f"{n}. {row.site_id}{kind}, about {clock(day_start, row.arrival_minute)}")
-        lines.append(f"   {stop_link(row.lat, row.lon, mode)}")
-    lines.append(f"Back to {start_name}: {stop_link(start_latlon[0], start_latlon[1], mode)}")
-    lines += ["", "Whole route preview (best in the Google Maps app):"]
-    for k, link in enumerate(links, start=1):
-        label = "Route" if len(links) == 1 else f"Part {k} of {len(links)}"
-        lines.append(f"{label}: {link}")
+    lines.append("")
+    if len(links) == 1:
+        lines.append(f"Route with all stops in Google Maps: {links[0]}")
+    else:
+        lines.append("Route with all stops in Google Maps (open the parts in order):")
+        per = int(cfg.get("nav_max_waypoints", 9)) + 1
+        for k, link in enumerate(links, start=1):
+            first, last = (k - 1) * per + 1, min(k * per, len(team))
+            stops = f"stops {first} to {last}" if first <= len(team) else "back to the puskesmas"
+            lines.append(f"Part {k} ({stops}): {link}")
     if report_link:
         lines += ["", f"At the end of the day, tell us what happened at each stop: {report_link}"]
     else:

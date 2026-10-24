@@ -17,6 +17,8 @@ STEPS = [
 
 # A new pipeline run plans with assumptions.csv, so forget the app's last custom settings.
 Path("outputs/plan_settings.json").unlink(missing_ok=True)
+# It also starts a fresh day: forget yesterday's carry over (saved from the app's daily report).
+Path("outputs/tomorrow.json").unlink(missing_ok=True)
 
 for step in STEPS:
     print(f"\n=== {step} ===")
