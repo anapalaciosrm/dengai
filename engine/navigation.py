@@ -138,22 +138,18 @@ def whatsapp_link(text, phone=None):
 
 
 def report_message(team_id, leader, link):
-    """End of day WhatsApp message with the team's report link, in Indonesian and English."""
-    hello_id = f"Halo {leader}! " if leader else "Halo! "
-    hello_en = f"Hi {leader}! " if leader else ""
-    return (f"*Dengai: Tim {team_id}, laporan akhir hari*\n"
-            f"{hello_id}Terima kasih untuk pemeriksaan hari ini. Mohon luangkan 2 menit untuk menandai "
-            f"setiap titik dan menulis ringkasan singkat:\n{link}\n\n"
-            f"_{hello_en}Thank you for today's inspections. Please take 2 minutes to mark each stop "
-            f"and add a short summary (link above)._")
+    """End of day WhatsApp message with the team's report link."""
+    hello = f"Hi {leader}! " if leader else "Hi! "
+    return (f"*Dengai: Team {team_id}, end of day report*\n"
+            f"{hello}Thank you for today's inspections. Please take 2 minutes to mark each stop "
+            f"and add a short summary:\n{link}")
 
 
 def group_message(links):
     """One message for a puskesmas WhatsApp group with every team's report link.
     links: list of (team_id, leader, link)."""
-    lines = ["*Dengai: laporan akhir hari / end of day reports*",
-             "Ketua tim, mohon buka link tim Anda dan tandai setiap titik. "
-             "_Team leaders, please open your team's link and mark each stop._", ""]
+    lines = ["*Dengai: end of day reports*",
+             "Team leaders, please open your team's link and mark each stop.", ""]
     for team_id, leader, link in links:
-        lines.append(f"Tim {team_id}{' (' + leader + ')' if leader else ''}: {link}")
+        lines.append(f"Team {team_id}{' (' + leader + ')' if leader else ''}: {link}")
     return "\n".join(lines)

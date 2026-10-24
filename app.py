@@ -258,23 +258,18 @@ def legend(color_by):
 
 SHORT_STATUS = {"breeding": "Breeding found", "clear": "No breeding", "false": "Wrong detection",
                 "cleared": "Cleared by residents", "no_access": "Couldn't get in", "not_reached": "Didn't get there"}
-# The field form shows Indonesian first (teams in Makassar), English second. Check wording with the mentor.
-FORM_STATUS = {"breeding": "Ada jentik · Breeding found", "clear": "Tidak ada jentik · No breeding",
-               "false": "Bukan tempat perindukan · Wrong detection",
-               "cleared": "Sudah dibersihkan warga · Cleared by residents",
-               "no_access": "Tidak bisa masuk · Couldn't get in",
-               "not_reached": "Tidak sempat · Didn't get there"}
+
 
 
 def report_page(team_id, plan_id, k):
     """Mobile field form (Lara's design): every stop, then the end of the day."""
     st.markdown("<style>.block-container{max-width:640px;padding-top:3.5rem}</style>", unsafe_allow_html=True)
-    st.markdown(f"### Dengai · Laporan Tim {team_id}  \n<small>Team {team_id} report</small>", unsafe_allow_html=True)
+    st.markdown(f"### Dengai · Team {team_id} report")
     if k != RP.key(plan_id, team_id):
-        st.error("Link ini tidak berlaku. Minta link baru ke koordinator. · This link is not valid; ask your coordinator.")
+        st.error("This link is not valid. Ask your coordinator for a new one.")
         return
     if str(saved.get("plan_id")) != str(plan_id):
-        st.warning("Link ini dari rencana sebelumnya. · This link is from an earlier plan; ask for today's link.")
+        st.warning("This link is from an earlier plan. Ask your coordinator for today's link.")
         return
     plan = load_csv(OUTPUTS / "plan_optimized.csv")
     team = plan[plan["team_id"] == team_id].sort_values("visit_order") if plan is not None else None
@@ -286,21 +281,19 @@ def report_page(team_id, plan_id, k):
     earlier = RP.load(plan_id, team_id) or {}
     old = earlier.get("details", {})
     old_day = earlier.get("day", {})
-    st.caption(f"{tcfg['puskesmas']} · {len(team)} titik / stops")
+    st.caption(f"{tcfg['puskesmas']} · {len(team)} stops")
     if earlier:
-        st.success(f"Laporan diterima {earlier['submitted'][-5:]}. Bisa diubah dan dikirim lagi. · "
-                   "Received; you can edit and send again.")
+        st.success(f"Report received at {earlier['submitted'][-5:]}. You can edit it and send again.")
 
     def pick(label, options, key, default):
-        """Tap buttons (pills) with Indonesian · English labels."""
+        """Tap buttons (pills)."""
         return st.pills(label, list(options), format_func=options.get, default=default, key=key)
 
-    leader = st.text_input("Nama Anda · Your name", earlier.get("leader") or
+    leader = st.text_input("Your name", earlier.get("leader") or
                            load_contacts().get(str(team_id), {}).get("name", ""), key="r_leader")
 
     answered_n = sum(1 for sid in team["site_id"] if ss.get(f"{sid}_access") or old.get(sid, {}).get("access"))
-    st.progress(answered_n / len(team), text=f"{answered_n} dari {len(team)} titik terisi · "
-                                              f"{answered_n} of {len(team)} stops answered")
+    st.progress(answered_n / len(team), text=f"{answered_n} of {len(team)} stops answered")
 
     details, photos = {}, {}
     for n, row in enumerate(team.itertuples(), start=1):
@@ -310,59 +303,59 @@ def report_page(team_id, plan_id, k):
         when = N.clock(tcfg["leave"], row.arrival_minute)
         # Keep the label fixed: a changing label would close the stop while it is being filled in.
         with st.expander(f"{n}. {sid} · {kind} · {when}", expanded=False):
-            st.markdown(f"[Buka peta · Open map]({N.stop_link(row.lat, row.lon, tcfg['mode'])})")
-            d = {"stop": n, "access": pick("Akses · Access", RP.ACCESS, f"{sid}_access", o.get("access"))}
+            st.markdown(f"[Open map]({N.stop_link(row.lat, row.lon, tcfg['mode'])})")
+            d = {"stop": n, "access": pick("Access", RP.ACCESS, f"{sid}_access", o.get("access"))}
             if d["access"] == "yes":
-                d["real_type"] = pick("Jenis sebenarnya · Real type", RP.REAL_TYPES, f"{sid}_type", o.get("real_type"))
+                d["real_type"] = pick("Real type", RP.REAL_TYPES, f"{sid}_type", o.get("real_type"))
                 c1, c2 = st.columns(2)
                 with c1:
-                    d["standing_water"] = pick("Air tergenang · Standing water", {"yes": "Ya · Yes", "no": "Tidak · No"},
+                    d["standing_water"] = pick("Standing water", {"yes": "Yes", "no": "No"},
                                                f"{sid}_water", o.get("standing_water"))
                 with c2:
-                    d["larvae"] = pick("Jentik · Larvae", {"yes": "Ya · Yes", "no": "Tidak · No"},
+                    d["larvae"] = pick("Larvae", {"yes": "Yes", "no": "No"},
                                        f"{sid}_larvae", o.get("larvae"))
                 if d["larvae"] == "yes":
-                    d["containers"] = st.number_input("Wadah berjentik · Containers with larvae", 0, 500,
+                    d["containers"] = st.number_input("Containers with larvae", 0, 500,
                                                       int(o.get("containers", 1) or 1), key=f"{sid}_cont")
-                d["action"] = pick("Tindakan · Action", RP.ACTIONS, f"{sid}_action", o.get("action"))
+                d["action"] = pick("Action", RP.ACTIONS, f"{sid}_action", o.get("action"))
                 c3, c4 = st.columns(2)
-                d["larvicide_g"] = c3.number_input("Larvasida (gram)", 0.0, 5000.0, float(o.get("larvicide_g", 0) or 0),
+                d["larvicide_g"] = c3.number_input("Larvicide (grams)", 0.0, 5000.0, float(o.get("larvicide_g", 0) or 0),
                                                    step=5.0, key=f"{sid}_grams") if d.get("action") == "larvicide" else 0.0
-                d["minutes"] = c4.number_input("Menit di lokasi · Minutes on site", 0, 300,
+                d["minutes"] = c4.number_input("Minutes on site", 0, 300,
                                                int(o.get("minutes", 0) or 0), key=f"{sid}_min")
-                photos[sid] = st.file_uploader("Foto · Photo", type=["jpg", "jpeg", "png", "heic"], key=f"{sid}_photo")
+                photos[sid] = st.file_uploader("Photo", type=["jpg", "jpeg", "png", "heic"], key=f"{sid}_photo")
                 if o.get("photo"):
                     d["photo"] = o["photo"]
-                    st.caption("Foto sudah ada · Photo already sent")
-            d["notes"] = st.text_input("Catatan · Extra notes", o.get("notes", ""), key=f"{sid}_notes")
+                    st.caption("Photo already sent")
+            d["notes"] = st.text_input("Extra notes", o.get("notes", ""), key=f"{sid}_notes")
             details[sid] = d
 
-    st.markdown("#### Akhir hari · End of day")
+    st.markdown("#### End of day")
     t0 = datetime.strptime(old_day.get("start") or tcfg["leave"], "%H:%M").time()
     end_default = (datetime.strptime(tcfg["leave"], "%H:%M") + pd.Timedelta(hours=tcfg["hours"])).strftime("%H:%M")
     t1 = datetime.strptime(old_day.get("end") or end_default, "%H:%M").time()
     c1, c2 = st.columns(2)
-    start_t = c1.time_input("Mulai · Start time", t0, step=300, key="r_start")
-    end_t = c2.time_input("Selesai · End time", t1, step=300, key="r_end")
+    start_t = c1.time_input("Start time", t0, step=300, key="r_start")
+    end_t = c2.time_input("End time", t1, step=300, key="r_end")
     skipped = [f"{d['stop']}" for d in details.values() if d.get("access") == "skipped"]
-    skip_reason = st.text_input(f"Titik dilewati + alasan · Stops skipped + reason"
+    skip_reason = st.text_input(f"Stops skipped + reason"
                                 + (f" (stops {', '.join(skipped)})" if skipped else ""),
                                 old_day.get("skipped_reason", ""), key="r_skip")
-    left_g = st.number_input("Sisa larvasida (gram) · Larvicide left (grams)", 0.0, 100000.0,
+    left_g = st.number_input("Larvicide left (grams)", 0.0, 100000.0,
                              float(old_day.get("larvicide_left_g", 0) or 0), step=10.0, key="r_left")
-    problems = st.text_area("Masalah · Problems", old_day.get("problems", ""), height=80, key="r_problems")
-    notes = st.text_area("Catatan lain · Extra notes", old_day.get("notes", ""), height=80, key="r_daynotes")
+    problems = st.text_area("Problems", old_day.get("problems", ""), height=80, key="r_problems")
+    notes = st.text_area("Extra notes", old_day.get("notes", ""), height=80, key="r_daynotes")
 
-    if st.button("Kirim laporan · Send report", type="primary", use_container_width=True):
+    if st.button("Send report", type="primary", use_container_width=True):
         no_access = [str(d["stop"]) for d in details.values() if not d.get("access")]
         no_larvae = [str(d["stop"]) for d in details.values() if d.get("access") == "yes" and not d.get("larvae")]
         if no_access or no_larvae:
             msg = []
             if no_access:
-                msg.append(f"pilih Akses untuk titik {', '.join(no_access)} · choose Access for stop(s) {', '.join(no_access)}")
+                msg.append(f"choose Access for stop(s) {', '.join(no_access)}")
             if no_larvae:
-                msg.append(f"isi Jentik untuk titik {', '.join(no_larvae)} · answer Larvae for stop(s) {', '.join(no_larvae)}")
-            st.warning("Belum lengkap · Not complete: " + "; ".join(msg))
+                msg.append(f"answer Larvae for stop(s) {', '.join(no_larvae)}")
+            st.warning("Not complete: " + "; ".join(msg))
         else:
             for sid, f in photos.items():
                 if f is not None:
@@ -374,8 +367,7 @@ def report_page(team_id, plan_id, k):
             stops = {sid: RP.status_from_detail(d) for sid, d in details.items()}
             summary = " ".join(x for x in [problems, skip_reason and f"Skipped: {skip_reason}", notes] if x)
             RP.save(plan_id, team_id, stops, summary, leader, details, day)
-            st.success("Terima kasih! Laporan sudah terkirim ke koordinator. · Thank you! Your report was sent. "
-                       "You can close this page.")
+            st.success("Thank you! Your report was sent to the coordinator. You can close this page.")
 
 
 q = st.query_params
@@ -790,10 +782,10 @@ with tab_day:
                 for n, site in enumerate(order, start=1):
                     d = det.get(site, {})
                     rows.append({"Stop": n, "Site": site, "What happened": SHORT_STATUS.get(r["stops"].get(site), ""),
-                                 "Real type": RP.REAL_TYPES.get(d.get("real_type"), "").split(" · ")[-1],
+                                 "Real type": RP.REAL_TYPES.get(d.get("real_type"), ""),
                                  "Larvae": {"yes": "yes", "no": "no"}.get(d.get("larvae"), ""),
                                  "Containers": str(d.get("containers", "")),
-                                 "Action": RP.ACTIONS.get(d.get("action"), "").split(" · ")[-1],
+                                 "Action": RP.ACTIONS.get(d.get("action"), ""),
                                  "Larvicide g": f"{d['larvicide_g']:g}" if d.get("larvicide_g") else "",
                                  "Minutes": str(d.get("minutes") or ""),
                                  "Photo": "yes" if d.get("photo") else "", "Notes": d.get("notes", "")})

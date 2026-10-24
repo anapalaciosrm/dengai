@@ -52,13 +52,10 @@ def path(plan_id, team_id):
 
 
 # Field form (designed by Lara). Per stop and end of day answers; codes are what is saved.
-ACCESS = {"yes": "Ya · Yes", "not_there": "Tidak ada · Not there", "no_access": "Tidak bisa masuk · No access",
-          "skipped": "Tidak sempat · Skipped"}
-REAL_TYPES = {"tire": "Ban · Tire", "drain": "Selokan · Drain", "trash": "Sampah · Trash",
-              "pot": "Pot / wadah · Pot", "other": "Lainnya · Other"}
-ACTIONS = {"larvicide": "Larvasida · Larvicide", "emptied": "Dikuras · Emptied",
-           "removed": "Dibuang · Removed", "needs_pickup": "Perlu diangkut · Needs pickup",
-           "none": "Tidak ada · None"}
+ACCESS = {"yes": "Yes", "not_there": "Not there", "no_access": "No access", "skipped": "Skipped"}
+REAL_TYPES = {"tire": "Tire", "drain": "Drain", "trash": "Trash", "pot": "Pot", "other": "Other"}
+ACTIONS = {"larvicide": "Larvicide", "emptied": "Emptied", "removed": "Removed",
+           "needs_pickup": "Needs pickup", "none": "None"}
 
 
 def status_from_detail(d):
