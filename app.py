@@ -9,6 +9,11 @@ import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
+import sys
+sys.path.append(str(Path(__file__).resolve().parent / "engine"))
+import config as C  # noqa: E402
+import navigation as N  # noqa: E402
+
 AREA_FILE = Path("data/raw/tallo_area.gpkg")
 SITES_FILE = Path("data/processed/sites_scored.csv")
 RAW_SITES_FILE = Path("data/processed/sites.csv")
@@ -162,6 +167,26 @@ if color_by == "priority":
                "Lines: each team's walking route along the streets. Green house: start. Blue cross: puskesmas.")
 else:
     st.caption("Red tire, orange container, blue drain, purple trash. Black outline: inspected in this plan.")
+
+# Field navigation: one message per team, shared on WhatsApp, opened in Google Maps (free links)
+if method and start is not None:
+    st.subheader("Send routes to the field teams")
+    st.caption("Each team gets its stops in order and free Google Maps links. "
+               "Long routes are split into parts because a link holds at most 9 stops in between.")
+    cfg = C.load_assumptions()
+    site_info = sites.set_index("site_id")
+    start_name = start["name"].iloc[0]
+    start_latlon = (float(start["lat"].iloc[0]), float(start["lon"].iloc[0]))
+    for team_id, team in plan.groupby("team_id"):
+        text, links = N.team_message(team_id, team, start_name, start_latlon, cfg, site_info)
+        with st.expander(f"Team {team_id}: {len(team)} sites, {len(links)} map link(s)"):
+            cols = st.columns(len(links) + 2)
+            for k, link in enumerate(links):
+                cols[k].link_button(f"Open route part {k + 1}", link)
+            cols[len(links)].link_button("Share on WhatsApp", N.whatsapp_link(text))
+            cols[len(links) + 1].download_button("Download text", text, file_name=f"team_{team_id}.txt",
+                                                 key=f"dl_{method}_{team_id}")
+            st.code(text, language=None)
 
 with st.expander("Top priority sites"):
     cols = [c for c in ["site_id", "site_type", "confidence", "buildings_nearby", "sites_nearby",
