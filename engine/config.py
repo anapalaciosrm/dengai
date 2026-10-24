@@ -20,6 +20,7 @@ ENRICHED_FILE = PROCESSED / "sites_enriched.csv"
 SCORED_FILE = PROCESSED / "sites_scored.csv"
 MATRIX_FILE = PROCESSED / "travel_minutes.csv"
 START_FILE = PROCESSED / "start_point.csv"
+ACCESS_FILE = PROCESSED / "site_access.csv"
 
 UTM = "EPSG:32750"  # meters, for buffers and distances
 WGS = "EPSG:4326"   # lat and lon, for storing and mapping

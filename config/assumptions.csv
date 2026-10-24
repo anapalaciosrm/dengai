@@ -27,3 +27,5 @@ solver_seconds,30,seconds,design choice,OR-Tools search time limit; longer can f
 day_start,08:00,time,placeholder,Ask mentor: when teams leave the puskesmas; used for arrival times in team messages
 nav_max_waypoints,9,stops,sourced,Google Maps URLs allow up to 9 waypoints per directions link (3 in mobile browsers)
 merge_radius_m,10,meters,design choice,Detections closer than this are one site (a tire pile is inspected once); ask mentor
+offpath_slowdown,2,multiplier,design choice,Walking from the nearest mapped path to a site (yards and unmapped alleys) is assumed twice as slow as a street; ask mentor
+max_offpath_m,300,meters,design choice,Sites farther than this from any mapped path are left out of walking routes and listed for a special visit

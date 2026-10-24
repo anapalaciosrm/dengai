@@ -1,7 +1,0 @@
-reality,method,real_sites_mean,real_sites_p5,real_sites_p95,real_value_mean,real_value_p5,real_value_p95,beats_nearest_pct,beats_priority_pct
-as predicted,nearest,50.3,45,55,39.6,35.6,43.4,,
-as predicted,priority,33.5,30,37,40.6,36.2,44.5,,
-as predicted,optimized,52.2,48,56,56.9,52.0,61.6,100.0,100.0
-detector 25% worse,nearest,37.6,31,43,29.5,24.2,34.6,,
-detector 25% worse,priority,25.0,20,30,30.2,23.9,36.2,,
-detector 25% worse,optimized,39.2,33,45,42.6,35.7,49.4,100.0,100.0

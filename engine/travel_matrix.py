@@ -70,8 +70,14 @@ def nearest_nodes(node_xy, points_xy):
     return idx, np.array(dist)
 
 
-def network_minutes(points_m, speed_m_per_min):
-    """Walking minutes between all points using the street network."""
+def network_minutes(points_m, speed_m_per_min, cfg):
+    """Walking minutes between all points using the street network.
+
+    Accessibility: the stretch from a site to its nearest mapped path (through yards, unmapped
+    alleys, over fences) is walked offpath_slowdown times slower than a street. Sites more than
+    max_offpath_m from any path are flagged hard_to_reach; the planners leave them out of the
+    daily walking routes and the app lists them for a special visit.
+    """
     import osmnx as ox
 
     graph = ox.load_graphml(C.GRAPH_FILE)
@@ -84,6 +90,8 @@ def network_minutes(points_m, speed_m_per_min):
     snap_nodes = [node_ids[i] for i in snap_idx]
     undirected = graph.to_undirected()  # people can walk both ways on a street
 
+    slow = float(cfg.get("offpath_slowdown", 1.0))  # off path meters count as this many street meters
+    max_off = float(cfg.get("max_offpath_m", 300))
     n = len(points_m)
     meters = np.zeros((n, n))
     for i, source in enumerate(snap_nodes):
@@ -92,7 +100,7 @@ def network_minutes(points_m, speed_m_per_min):
             if i == j:
                 continue
             network = lengths.get(target, np.inf)
-            meters[i, j] = network + snap_m[i] + snap_m[j]
+            meters[i, j] = network + slow * (snap_m[i] + snap_m[j])
 
     unreachable = np.isinf(meters).sum()
     if unreachable:
@@ -104,11 +112,13 @@ def network_minutes(points_m, speed_m_per_min):
 
     # Accessibility: sites far from any mapped path are hard to reach (brief: geographic accessibility).
     access = pd.DataFrame({"id": list(points_m["id"]), "meters_to_path": snap_m.round(0)})
-    access["hard_to_reach"] = access["meters_to_path"] > 300
+    access["offpath_minutes"] = (snap_m * slow / speed_m_per_min).round(1)
+    access["hard_to_reach"] = (access["meters_to_path"] > max_off) & (access["id"] != "START")
     access.to_csv(C.PROCESSED / "site_access.csv", index=False)
     n_hard = int(access["hard_to_reach"].sum())
     if n_hard:
-        print(f"{n_hard} point(s) are over 300 m from any mapped path (see site_access.csv)")
+        print(f"{n_hard} site(s) are over {max_off:.0f} m from any mapped path: left out of walking "
+              "routes, listed for a special visit (site_access.csv)")
     return meters / speed_m_per_min
 
 
@@ -138,7 +148,7 @@ def main():
 
     speed = cfg["walk_speed_kmh"] * 1000 / 60  # meters per minute
     if C.GRAPH_FILE.exists():
-        minutes = network_minutes(points, speed)
+        minutes = network_minutes(points, speed, cfg)
         method = "street network"
     else:
         minutes = straight_minutes(points, speed, cfg["detour_factor"])

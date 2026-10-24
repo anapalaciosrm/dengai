@@ -196,6 +196,17 @@ if method and start is not None:
                                                  key=f"dl_{method}_{team_id}")
             st.code(text, language=None)
 
+access = load_csv(Path("data/processed/site_access.csv"))
+if access is not None and "hard_to_reach" in access and access["hard_to_reach"].any():
+    hard = access[access["hard_to_reach"]].merge(sites, left_on="id", right_on="site_id")
+    st.subheader("Sites that need a special visit")
+    st.caption("These sites are far from any mapped street or path (fenced, on a roof, across water, "
+               "or in unmapped alleys). They are left out of the walking routes for every method, "
+               "so the coordinator can plan them separately, for example with the owner or a vehicle.")
+    st.dataframe(hard[["site_id", "site_type", "priority", "meters_to_path"]]
+                 .rename(columns={"meters_to_path": "Meters from nearest path"})
+                 .sort_values("priority", ascending=False), hide_index=True)
+
 robust_file, sens_file = OUTPUTS / "robustness.csv", OUTPUTS / "sensitivity.csv"
 if robust_file.exists() or sens_file.exists():
     st.subheader("Robustness and sensitivity")

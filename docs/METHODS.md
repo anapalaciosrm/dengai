@@ -47,7 +47,7 @@ confidence may not exist. Fallback: give every detection the model's accuracy (`
 | **Exposure** | Count buildings within the buffer radius (buffer + spatial join) | Risk = hazard × exposure, the standard risk framework in public health and disaster risk | standard method; scaling 0.5 to 1.5 is **our design choice** |
 | **Buffer radius 100 m** | Average Aedes aegypti flight range | Moore and Brown, *Journal of Medical Entomology* (2022), meta analysis of 38 mark release recapture studies: about 106 m | sourced |
 | **Clustering** | Count other predicted sites within the buffer. Upgrade: Getis Ord Gi* hotspot statistic | The source team's own repo includes kernel density and Getis Ord Gi* hotspot maps (`spatial_analysis_tires.py`) | standard method; scaling is **our design choice** |
-| **Road access** (stretch) | Distance from site to nearest walkable edge, converted to extra minutes | OSMnx nearest edge | standard method; minutes per meter is **placeholder** |
+| **Accessibility** | Distance from each site to the nearest mapped path. That stretch (yards, unmapped alleys, fences) is walked `offpath_slowdown` (2×) slower, so hard to reach sites cost more time and the optimizer weighs that against their value. Sites over `max_offpath_m` (300 m) are left out of walking routes for every method and listed in the app for a special visit | OSMnx nearest node; equity concern from the Machala, Ecuador study (hard to reach areas cost most to serve) | standard method; slowdown and cutoff are **our design choice** |
 
 ## 3. Priority score
 

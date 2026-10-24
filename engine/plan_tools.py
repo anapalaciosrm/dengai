@@ -17,8 +17,20 @@ def load_inputs():
     cfg = C.load_assumptions()
     sites = pd.read_csv(C.SCORED_FILE).set_index("site_id")
     travel = pd.read_csv(C.MATRIX_FILE, index_col=0)
+    sites = routable(sites)
     day_minutes = cfg["hours_per_day"] * 60
     return cfg, sites, travel, day_minutes
+
+
+def routable(sites):
+    """Drop hard to reach sites (see travel_matrix.py). Every method plans on the same set."""
+    if not C.ACCESS_FILE.exists():
+        return sites
+    access = pd.read_csv(C.ACCESS_FILE).set_index("id")
+    hard = [s for s in sites.index if s in access.index and bool(access.at[s, "hard_to_reach"])]
+    if hard:
+        print(f"Leaving {len(hard)} hard to reach site(s) out of walking routes: {', '.join(hard)}")
+    return sites.drop(index=hard)
 
 
 def greedy_plan(sites, travel, n_teams, day_minutes, choose):
