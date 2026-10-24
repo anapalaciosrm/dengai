@@ -171,12 +171,20 @@ else:
 # Field navigation: one message per team, shared on WhatsApp, opened in Google Maps (free links)
 if method and start is not None:
     st.subheader("Send routes to the field teams")
-    st.caption("Each team gets its stops in order and free Google Maps links. "
-               "Long routes are split into parts because a link holds at most 9 stops in between.")
+    st.caption("Each team gets its stops in order, with a free Google Maps link per stop that navigates "
+               "from where the inspector is. Whole route links are a preview, split into parts because "
+               "a link holds at most 9 stops in between (3 in a phone browser).")
     cfg = C.load_assumptions()
     site_info = sites.set_index("site_id")
     start_name = start["name"].iloc[0]
     start_latlon = (float(start["lat"].iloc[0]), float(start["lon"].iloc[0]))
+    paths_file = OUTPUTS / f"paths_{method}.json"
+    kml = N.plan_kml(plan, start_name, start_latlon, site_info,
+                     json.loads(paths_file.read_text()) if paths_file.exists() else None, cfg,
+                     title=f"Dengai: {METHOD_LABELS[method]}")
+    st.download_button("Download all teams for Google My Maps (.kml)", kml,
+                       file_name=f"dengai_{method}.kml", mime="application/vnd.google-earth.kml+xml",
+                       help="Free: go to mymaps.google.com, create a map, Import, choose this file.")
     for team_id, team in plan.groupby("team_id"):
         text, links = N.team_message(team_id, team, start_name, start_latlon, cfg, site_info)
         with st.expander(f"Team {team_id}: {len(team)} sites, {len(links)} map link(s)"):

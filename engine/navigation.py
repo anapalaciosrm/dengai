@@ -63,21 +63,61 @@ def team_message(team_id, team, start_name, start_latlon, cfg, sites=None, title
     links = maps_links(points, cfg.get("travel_mode", "walk"), int(cfg.get("nav_max_waypoints", 9)))
     day_start = cfg.get("day_start", "08:00")
 
+    mode = cfg.get("travel_mode", "walk")
     lines = [f"*{title}: Team {team_id}*",
-             f"{len(team)} sites. Start and finish: {start_name}.", ""]
+             f"{len(team)} sites. Start and finish: {start_name}.",
+             "Tap a stop's link to navigate there from where you are.", ""]
     for n, row in enumerate(team.itertuples(), start=1):
         kind = ""
         if sites is not None and row.site_id in sites.index:
             kind = f" {sites.at[row.site_id, 'site_type']}"
         lines.append(f"{n}. {row.site_id}{kind}, about {clock(day_start, row.arrival_minute)}")
-    lines.append("")
-    if len(links) == 1:
-        lines.append(f"Route in Google Maps: {links[0]}")
-    else:
-        for k, link in enumerate(links, start=1):
-            lines.append(f"Route part {k} of {len(links)}: {link}")
+        lines.append(f"   {stop_link(row.lat, row.lon, mode)}")
+    lines.append(f"Back to {start_name}: {stop_link(start_latlon[0], start_latlon[1], mode)}")
+    lines += ["", "Whole route preview (best in the Google Maps app):"]
+    for k, link in enumerate(links, start=1):
+        label = "Route" if len(links) == 1 else f"Part {k} of {len(links)}"
+        lines.append(f"{label}: {link}")
     lines += ["", "Reply with the stop numbers you inspected and what you found."]
     return "\n".join(lines), links
+
+
+def stop_link(lat, lon, travel_mode="walk"):
+    """Navigate from the phone's current location to one point. No origin, no waypoints,
+    so it works in the Maps app and in mobile browsers, with no stop limit."""
+    params = {"api": 1, "destination": f"{lat:.6f},{lon:.6f}",
+              "travelmode": GOOGLE_MODES.get(str(travel_mode).lower(), "walking")}
+    return "https://www.google.com/maps/dir/?" + urlencode(params, safe=",")
+
+
+def plan_kml(plan, start_name, start_latlon, sites=None, paths=None, cfg=None, title="Dengai plan"):
+    """KML file of the whole plan for Google My Maps (free): one folder per team with
+    numbered stops and, if given, the street path. Import at mymaps.google.com."""
+    from xml.sax.saxutils import escape
+    day_start = (cfg or {}).get("day_start", "08:00")
+
+    def placemark(name, lat, lon, desc=""):
+        return (f"<Placemark><name>{escape(name)}</name><description>{escape(desc)}</description>"
+                f"<Point><coordinates>{lon:.6f},{lat:.6f},0</coordinates></Point></Placemark>")
+
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
+             f"<name>{escape(title)}</name>",
+             placemark(f"Start: {start_name}", start_latlon[0], start_latlon[1], "Puskesmas")]
+    for team_id, team in plan.groupby("team_id"):
+        parts.append(f"<Folder><name>Team {team_id}</name>")
+        for n, row in enumerate(team.sort_values("visit_order").itertuples(), start=1):
+            kind = sites.at[row.site_id, "site_type"] if sites is not None and row.site_id in sites.index else ""
+            parts.append(placemark(f"T{team_id}-{n} {row.site_id}", row.lat, row.lon,
+                                   f"{kind}, about {clock(day_start, row.arrival_minute)}"))
+        line = (paths or {}).get(str(int(team_id)))
+        if line:
+            coords = " ".join(f"{lon:.6f},{lat:.6f},0" for lat, lon in line)
+            parts.append(f"<Placemark><name>Team {team_id} route</name>"
+                         f"<LineString><coordinates>{coords}</coordinates></LineString></Placemark>")
+        parts.append("</Folder>")
+    parts.append("</Document></kml>")
+    return "\n".join(parts)
 
 
 def whatsapp_link(text):
