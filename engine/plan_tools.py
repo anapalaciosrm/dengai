@@ -33,30 +33,39 @@ def routable(sites):
     return sites.drop(index=hard)
 
 
+def per_team(value, n_teams):
+    """A travel table or day length shared by all teams, or one per team, as a list."""
+    return list(value) if isinstance(value, (list, tuple)) else [value] * n_teams
+
+
 def greedy_plan(sites, travel, n_teams, day_minutes, choose):
     """Build a plan where teams take turns picking their next site with `choose`.
 
-    choose(current_location, feasible_site_ids) returns one site id.
-    A site is feasible if the team can walk there, inspect it, and still walk back
-    to START before the day ends.
+    travel and day_minutes: one for all teams, or a list with one per team
+    (teams can travel differently and work different hours).
+    choose(current_location, feasible_site_ids) or choose(current, feasible, team_travel)
+    returns one site id. A site is feasible if the team can get there, inspect it, and
+    still get back to START before its day ends.
     """
+    travels, days = per_team(travel, n_teams), per_team(day_minutes, n_teams)
+    takes_travel = choose.__code__.co_argcount >= 3
     unvisited = set(sites.index)
     teams = [{"at": "START", "clock": 0.0, "stops": []} for _ in range(n_teams)]
     active = list(range(n_teams))
 
     while active and unvisited:
         for t in list(active):
-            team = teams[t]
+            team, tr = teams[t], travels[t]
             feasible = [
                 s for s in unvisited
-                if team["clock"] + travel.at[team["at"], s] + sites.at[s, "inspect_min"]
-                + travel.at[s, "START"] <= day_minutes
+                if team["clock"] + tr.at[team["at"], s] + sites.at[s, "inspect_min"]
+                + tr.at[s, "START"] <= days[t]
             ]
             if not feasible:
                 active.remove(t)
                 continue
-            nxt = choose(team["at"], feasible)
-            arrival = team["clock"] + travel.at[team["at"], nxt]
+            nxt = choose(team["at"], feasible, tr) if takes_travel else choose(team["at"], feasible)
+            arrival = team["clock"] + tr.at[team["at"], nxt]
             team["stops"].append((nxt, arrival))
             team["clock"] = arrival + sites.at[nxt, "inspect_min"]
             team["at"] = nxt
@@ -86,9 +95,10 @@ def summarize(method, plan, sites, travel):
     """Key numbers for comparing plans. Uses is_real only if present (fake data evaluation)."""
     visited = list(plan["site_id"]) if len(plan) else []
     travel_total = 0.0
-    for _, team in plan.groupby("team_id"):
+    for team_id, team in plan.groupby("team_id"):
+        tr = travel[int(team_id) - 1] if isinstance(travel, (list, tuple)) else travel
         path = ["START"] + list(team.sort_values("visit_order")["site_id"]) + ["START"]
-        travel_total += sum(travel.at[a, b] for a, b in zip(path[:-1], path[1:]))
+        travel_total += sum(tr.at[a, b] for a, b in zip(path[:-1], path[1:]))
 
     summary = {
         "method": method,

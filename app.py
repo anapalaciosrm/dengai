@@ -1,6 +1,15 @@
-"""Dengai dashboard. Run with: streamlit run app.py (after python run_pipeline.py)"""
+"""Dengai dashboard. Run with: streamlit run app.py (after python run_pipeline.py once)
+
+Tabs:
+    Today's plan            the coordinator: choose puskesmas and teams, generate routes, see cost,
+                            send each team its route on WhatsApp
+    Weights and comparisons how sites are prioritized, Dengai vs simpler strategies, robustness
+    Finish the day          teams report what happened (the AI agent works from this)
+"""
 
 import json
+import sys
+from datetime import date, datetime
 from pathlib import Path
 
 import folium
@@ -9,7 +18,6 @@ import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
-import sys
 sys.path.append(str(Path(__file__).resolve().parent / "engine"))
 import config as C  # noqa: E402
 import navigation as N  # noqa: E402
@@ -21,19 +29,23 @@ SITES_FILE = Path("data/processed/sites_scored.csv")
 RAW_SITES_FILE = Path("data/processed/sites.csv")
 START_FILE = Path("data/processed/start_point.csv")
 OUTPUTS = Path("outputs")
+CONTACTS_FILE = OUTPUTS / "team_contacts.json"   # local only (outputs/ is not on GitHub)
+DEBRIEF_DIR = OUTPUTS / "debriefs"
 
 TYPE_COLORS = {"tire": "#d7301f", "container": "#fc8d59", "drain": "#4575b4", "trash": "#7b3294"}
-TEAM_COLORS = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666"]
+PRIORITY_COLORS = [("High priority", "#b2182b"), ("Medium", "#ef8a62"), ("Low", "#fddbc7")]
+TEAM_COLORS = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666",
+               "#1f78b4", "#b15928", "#6a3d9a", "#33a02c"]
 METHOD_LABELS = {
     "nearest": "Baseline 1: nearest site next",
     "priority": "Baseline 2: highest priority next",
     "optimized": "Dengai optimizer",
 }
 
-st.set_page_config(page_title="Dengai", layout="wide")
-st.title("Dengai: daily inspection plan for Tallo, Makassar")
-st.caption("Sites are predicted, not confirmed, breeding sites. Numbers show inspection value, not health outcomes.")
+st.set_page_config(page_title="Dengai", page_icon="🦟", layout="wide")
 
+
+# ---------- loading helpers ----------
 
 @st.cache_data
 def load_layer(layer):
@@ -52,13 +64,20 @@ def load_csv(path):
     return pd.read_csv(path) if Path(path).exists() else None
 
 
+@st.cache_data
+def load_json(path):
+    return json.loads(Path(path).read_text()) if Path(path).exists() else None
+
+
+@st.cache_data
+def puskesmas():
+    return D.puskesmas_options()
+
+
 @st.cache_resource
 def street_network():
     """Load the street network once per app session (a few seconds)."""
     return R.load_network()
-
-
-CONTACTS_FILE = OUTPUTS / "team_contacts.json"  # local only (outputs/ is not on GitHub)
 
 
 def load_contacts():
@@ -73,10 +92,15 @@ def save_contacts(contacts):
     CONTACTS_FILE.write_text(json.dumps(contacts, indent=2))
 
 
-def available_plans():
-    """Methods that have a plan file in outputs/."""
-    return [m for m in METHOD_LABELS if (OUTPUTS / f"plan_{m}.csv").exists()]
+def idr(x):
+    return f"Rp {x:,.0f}".replace(",", ".")
 
+
+def mode_label(key):
+    return D.MODES.get(key, (key,))[0]
+
+
+# ---------- data ----------
 
 sites = load_csv(SITES_FILE)
 if sites is None:
@@ -85,233 +109,416 @@ if sites is None:
     st.warning("No sites yet. Run: python engine/make_fake_sites.py, then python run_pipeline.py")
     st.stop()
 
+cfg = C.load_assumptions()
 boundary = load_layer("boundary")
 health = load_layer("health_centers")
-start = load_csv(START_FILE)
-plans = available_plans()
-
-# Sidebar: the organizer plans the day
-cfg = C.load_assumptions()
-settings = D.load_settings(cfg)
-st.sidebar.header("Plan the day")
+default_start = load_csv(START_FILE)
+pusk = puskesmas()
+saved = D.load_settings(cfg)                    # settings of the plan currently in outputs/
+plan_ready = all((OUTPUTS / f"plan_{m}.csv").exists() for m in METHOD_LABELS)
 can_plan = SITES_FILE.exists() and C.MATRIX_FILE.exists()
-with st.sidebar.form("plan_form"):
-    n_teams = st.number_input("Number of teams", 1, 12, int(settings["n_teams"]))
-    mode_keys = list(D.MODES)
-    mode = st.selectbox("Teams travel by", mode_keys,
-                        index=mode_keys.index(settings["travel_mode"]) if settings["travel_mode"] in mode_keys else 0,
-                        format_func=lambda k: D.MODES[k][0])
-    hours = st.slider("Hours in the field", 2.0, 10.0, float(settings["hours_per_day"]), 0.5)
-    try:
-        default_start = pd.to_datetime(settings["day_start"], format="%H:%M").time()
-    except Exception:
-        default_start = pd.to_datetime("08:00", format="%H:%M").time()
-    day_start = st.time_input("Teams leave the puskesmas at", default_start, step=900)
-    with st.expander("Advanced"):
-        seconds = st.slider("Optimizer search time (seconds)", 5, 60, int(settings["solver_seconds"]), 5,
-                            help="Longer can find slightly better routes.")
-    create = st.form_submit_button("Create routes", type="primary", disabled=not can_plan,
-                                   use_container_width=True)
-if not can_plan:
-    st.sidebar.info("Run python run_pipeline.py once to prepare sites and travel times.")
-if create:
-    with st.spinner(f"Planning routes for {n_teams} teams (about {seconds + 5} seconds)..."):
-        D.plan_day(int(n_teams), mode, float(hours), day_start.strftime("%H:%M"), int(seconds),
-                   net=street_network(), start=load_csv(START_FILE).iloc[0])
-    st.cache_data.clear()
-    st.session_state["method"] = "optimized"
-    st.rerun()
 
-method = None
-if plans:
-    if st.session_state.get("method") not in plans:
-        st.session_state["method"] = "optimized" if "optimized" in plans else plans[0]
-    method = st.sidebar.radio("Show routes for", plans, format_func=lambda m: METHOD_LABELS[m], key="method")
+saved_start = saved.get("start") or (
+    {"name": default_start["name"].iloc[0], "lat": float(default_start["lat"].iloc[0]),
+     "lon": float(default_start["lon"].iloc[0])} if default_start is not None else None)
 
-st.sidebar.header("Sites")
-color_by = st.sidebar.radio("Color sites by", ["priority", "site type"]) if "priority" in sites else "site type"
-chosen_types = st.sidebar.multiselect("Site types", sorted(sites["site_type"].unique()),
-                                      default=sorted(sites["site_type"].unique()))
-min_conf = st.sidebar.slider("Minimum confidence", 0.0, 1.0, 0.0, 0.05)
-show_health = st.sidebar.checkbox("All health facilities", value=False)
 
-shown = sites[sites["site_type"].isin(chosen_types) & (sites["confidence"] >= min_conf)]
+# ---------- team settings kept between reruns ----------
 
-# Comparison table across plans
-if plans:
-    rows = []
-    for m in plans:
-        with open(OUTPUTS / f"summary_{m}.json") as f:
-            s = json.load(f)
-        rows.append({
-            "Method": METHOD_LABELS[m],
-            "Sites inspected": s["sites_visited"],
-            "High priority reached": f"{s['high_priority_visited']} of {s['high_priority_total']}",
-            "Total priority": s["total_priority"],
-            "Expected real sites": s["expected_real_sites"],
-            "Walking minutes": s["travel_minutes"],
-        })
-    st.subheader("Plans compared (same teams, hours, and start point)")
-    st.caption(f"{settings['n_teams']} teams, {D.MODES.get(settings['travel_mode'], ('walking',))[0].lower()}, "
-               f"{settings['hours_per_day']:g} hours from {settings['day_start']}.")
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+ss = st.session_state
+if "teams" not in ss:
+    ss.teams = [dict(t) for t in saved["teams"]]
+if "pending_start" in ss:               # a puskesmas clicked on the map last run
+    ss.start_name = ss.pop("pending_start")
+if "start_name" not in ss:
+    ss.start_name = saved_start["name"] if saved_start else pusk["name"].iloc[0]
 
-# Map
-center = [sites["lat"].mean(), sites["lon"].mean()]
-m = folium.Map(location=center, zoom_start=15, tiles="OpenStreetMap")
 
-if boundary is not None:
-    folium.GeoJson(boundary, name="Tallo boundary",
-                   style_function=lambda _: {"color": "#333", "weight": 2, "fill": False}).add_to(m)
+def team_keys(i):
+    return f"t{i}_mode", f"t{i}_hours", f"t{i}_leave"
 
-visited = set()
-if method:
-    plan = load_csv(OUTPUTS / f"plan_{method}.csv")
-    visited = set(plan["site_id"])
-    # Street paths from engine/route_paths.py; without them, draw straight lines.
-    paths_file = OUTPUTS / f"paths_{method}.json"
-    street_paths = json.loads(paths_file.read_text()) if paths_file.exists() else {}
-    for team_id, team in plan.groupby("team_id"):
-        team = team.sort_values("visit_order")
-        path = street_paths.get(str(int(team_id)))
-        if not path:
-            path = [[start["lat"].iloc[0], start["lon"].iloc[0]]] if start is not None else []
-            path += team[["lat", "lon"]].values.tolist()
-            path += path[:1]  # back to start
-        folium.PolyLine(path, color=TEAM_COLORS[(team_id - 1) % len(TEAM_COLORS)], weight=3,
-                        opacity=0.8, tooltip=f"Team {team_id}: {len(team)} sites").add_to(m)
 
-max_priority = shown["priority"].max() if "priority" in shown and len(shown) else 1
-for _, row in shown.iterrows():
-    if color_by == "priority":
-        level = row["priority"] / max_priority
-        color = "#b2182b" if level > 0.66 else "#ef8a62" if level > 0.33 else "#fddbc7"
-    else:
-        color = TYPE_COLORS.get(row["site_type"], "#555")
-    is_visited = row["site_id"] in visited
-    tip = f"{row['site_id']}: {row['site_type']}, confidence {row['confidence']:.2f}"
-    if "priority" in row:
-        tip += f", priority {row['priority']:.2f}"
-    tip += " (visited)" if is_visited else (" (not visited)" if method else "")
-    folium.CircleMarker(
-        location=[row["lat"], row["lon"]],
-        radius=4 + 4 * row["confidence"],
-        color="#000" if is_visited else color, weight=2 if is_visited else 1,
-        fill=True, fill_color=color, fill_opacity=0.85 if is_visited or not method else 0.35,
-        tooltip=tip,
-    ).add_to(m)
+def current_teams():
+    """Team settings as shown in the widgets right now."""
+    teams = []
+    for i, t in enumerate(ss.teams):
+        km, kh, kl = team_keys(i)
+        leave = ss.get(kl)
+        teams.append({"mode": ss.get(km, t["mode"]), "hours": float(ss.get(kh, t["hours"])),
+                      "leave": leave.strftime("%H:%M") if leave is not None else t["leave"]})
+    return teams
 
-if start is not None:
-    folium.Marker([start["lat"].iloc[0], start["lon"].iloc[0]], tooltip=f"Start: {start['name'].iloc[0]}",
-                  icon=folium.Icon(color="green", icon="home")).add_to(m)
 
-if health is not None:
-    # Puskesmas (the teams' bases) always show; other health facilities only when ticked.
-    for _, row in health.iterrows():
-        if not (row.get("is_puskesmas") or show_health):
-            continue
-        label = row.get("name") or "Health facility"
-        folium.Marker([row.geometry.y, row.geometry.x], tooltip=label,
-                      icon=folium.Icon(color="blue" if row.get("is_puskesmas") else "lightgray",
-                                       icon="plus")).add_to(m)
+def reset_team_widgets():
+    for key in [k for k in ss.keys() if isinstance(k, str) and k.startswith("t") and "_" in k
+                and k.split("_")[0][1:].isdigit()]:
+        del ss[key]
 
-st_folium(m, height=600, use_container_width=True)
 
-if color_by == "priority":
-    st.caption("Dark red: highest priority, light: lowest. Black outline: inspected in this plan. "
-               "Lines: each team's route along the streets. Green house: start. Blue cross: puskesmas.")
-else:
-    st.caption("Red tire, orange container, blue drain, purple trash. Black outline: inspected in this plan.")
+def add_team():
+    teams = current_teams()
+    teams.append(dict(teams[-1]) if teams else {"mode": "walk", "hours": 6.0, "leave": "08:00"})
+    ss.teams = teams
+    reset_team_widgets()
 
-# Field navigation: one message per team, shared on WhatsApp, opened in Google Maps (free links)
-if method and start is not None:
-    st.subheader("Send routes to the field teams")
-    st.caption("Each team gets its stops in order, with a free Google Maps link per stop that navigates "
-               "from where the inspector is. Whole route links are a preview, split into parts because "
-               "a link holds at most 9 stops in between (3 in a phone browser).")
-    msg_cfg = dict(cfg, travel_mode=settings["travel_mode"], day_start=settings["day_start"])
-    contacts = load_contacts()
-    site_info = sites.set_index("site_id")
-    start_name = start["name"].iloc[0]
-    start_latlon = (float(start["lat"].iloc[0]), float(start["lon"].iloc[0]))
-    paths_file = OUTPUTS / f"paths_{method}.json"
-    kml = N.plan_kml(plan, start_name, start_latlon, site_info,
-                     json.loads(paths_file.read_text()) if paths_file.exists() else None, msg_cfg,
-                     title=f"Dengai: {METHOD_LABELS[method]}")
-    st.download_button("Download all teams for Google My Maps (.kml)", kml,
-                       file_name=f"dengai_{method}.kml", mime="application/vnd.google-earth.kml+xml",
-                       help="Free: go to mymaps.google.com, create a map, Import, choose this file.")
-    for team_id, team in plan.groupby("team_id"):
-        key = str(int(team_id))
-        saved = contacts.get(key, {})
-        label = f"Team {team_id}" + (f" ({saved['name']})" if saved.get("name") else "")
-        with st.expander(f"{label}: {len(team)} sites"):
-            c1, c2 = st.columns(2)
-            name = c1.text_input("Team leader", saved.get("name", ""), key=f"name_{key}")
-            phone = c2.text_input("WhatsApp number", saved.get("phone", ""), key=f"phone_{key}",
-                                  placeholder="+62 812 3456 7890",
-                                  help="Saved on this computer only, for the next time you plan.")
-            if name != saved.get("name", "") or phone != saved.get("phone", ""):
-                contacts[key] = {"name": name, "phone": phone}
-                save_contacts(contacts)
-            text, links = N.team_message(team_id, team, start_name, start_latlon, msg_cfg, site_info)
-            if name:
-                text = text.replace(f"*Dengai: Team {team_id}*", f"*Dengai: Team {team_id}*\nHi {name}!", 1)
-            b1, b2, b3 = st.columns(3)
-            b1.link_button(f"Send to {name or 'team'} on WhatsApp" if phone else "Share on WhatsApp",
-                           N.whatsapp_link(text, phone), type="primary" if phone else "secondary",
-                           use_container_width=True)
-            b2.link_button("Preview whole route", links[0], use_container_width=True)
-            b3.download_button("Download text", text, file_name=f"team_{team_id}.txt",
-                               key=f"dl_{method}_{team_id}", use_container_width=True)
-            st.code(text, language=None)
 
-access = load_csv(Path("data/processed/site_access.csv"))
-if access is not None and "hard_to_reach" in access and access["hard_to_reach"].any():
-    hard = access[access["hard_to_reach"]].merge(sites, left_on="id", right_on="site_id")
-    st.subheader("Sites that need a special visit")
-    st.caption("These sites are far from any mapped street or path (fenced, on a roof, across water, "
-               "or in unmapped alleys). They are left out of the walking routes for every method, "
-               "so the coordinator can plan them separately, for example with the owner or a vehicle.")
-    st.dataframe(hard[["site_id", "site_type", "priority", "meters_to_path"]]
-                 .rename(columns={"meters_to_path": "Meters from nearest path"})
-                 .sort_values("priority", ascending=False), hide_index=True)
+def remove_team(i):
+    teams = current_teams()
+    if len(teams) > 1:
+        teams.pop(i)
+    ss.teams = teams
+    reset_team_widgets()
 
-robust_file, sens_file = OUTPUTS / "robustness.csv", OUTPUTS / "sensitivity.csv"
-if robust_file.exists() or sens_file.exists():
-    st.subheader("Robustness and sensitivity")
-    if robust_file.exists():
-        r = pd.read_csv(robust_file)
-        st.caption("Computed by run_pipeline.py with the settings in assumptions.csv. "
-                   "1,000 simulated realities: each site is real with the chance given by its confidence. "
-                   "'Detector 25% worse' assumes the detector is overconfident. "
-                   "Ranges are the 5th to 95th percentile.")
+
+def start_point(name):
+    row = pusk[pusk["name"] == name]
+    if len(row):
+        r = row.iloc[0]
+        return {"name": r["name"], "lat": float(r["lat"]), "lon": float(r["lon"])}
+    return saved_start
+
+
+# ---------- map ----------
+
+def build_map(method=None, show_routes=True, start=None, color_by="priority"):
+    """Folium map: sites as dots, optional routes of one plan, puskesmas, and the start."""
+    m = folium.Map(location=[sites["lat"].mean(), sites["lon"].mean()], zoom_start=15,
+                   tiles="OpenStreetMap")
+    if boundary is not None:
+        folium.GeoJson(boundary, name="Tallo boundary",
+                       style_function=lambda _: {"color": "#333", "weight": 2, "fill": False}).add_to(m)
+
+    visited = set()
+    if method and show_routes and plan_ready:
+        plan = load_csv(OUTPUTS / f"plan_{method}.csv")
+        visited = set(plan["site_id"])
+        street_paths = load_json(OUTPUTS / f"paths_{method}.json") or {}
+        for team_id, team in plan.groupby("team_id"):
+            team = team.sort_values("visit_order")
+            path = street_paths.get(str(int(team_id)))
+            if not path and saved_start:
+                path = [[saved_start["lat"], saved_start["lon"]]] + team[["lat", "lon"]].values.tolist()
+                path += path[:1]
+            folium.PolyLine(path, color=TEAM_COLORS[(team_id - 1) % len(TEAM_COLORS)], weight=4,
+                            opacity=0.85, tooltip=f"Team {team_id}: {len(team)} sites").add_to(m)
+
+    top = sites["priority"].max() if "priority" in sites else 1
+    for _, row in sites.iterrows():
+        if color_by == "priority" and "priority" in row:
+            level = row["priority"] / top
+            color = PRIORITY_COLORS[0][1] if level > 0.66 else PRIORITY_COLORS[1][1] if level > 0.33 \
+                else PRIORITY_COLORS[2][1]
+        else:
+            color = TYPE_COLORS.get(row["site_type"], "#555")
+        is_visited = row["site_id"] in visited
+        tip = f"{row['site_id']}: {row['site_type']}, confidence {row['confidence']:.2f}"
+        if "priority" in row:
+            tip += f", priority {row['priority']:.2f}"
+        if visited:
+            tip += " (in today's routes)" if is_visited else " (not today)"
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]], radius=4 + 4 * row["confidence"],
+            color="#000" if is_visited else color, weight=2 if is_visited else 1,
+            fill=True, fill_color=color, fill_opacity=0.9 if (is_visited or not visited) else 0.35,
+            tooltip=tip,
+        ).add_to(m)
+
+    for _, p in pusk.iterrows():
+        is_start = start is not None and p["name"] == start["name"]
+        folium.Marker([p["lat"], p["lon"]], tooltip=f"Puskesmas: {p['name']}",
+                      icon=folium.Icon(color="green" if is_start else "blue",
+                                       icon="home" if is_start else "plus")).add_to(m)
+    return m
+
+
+def legend(color_by):
+    """Vertical color key next to the map."""
+    items = PRIORITY_COLORS if color_by == "priority" else \
+        [(k.capitalize(), v) for k, v in TYPE_COLORS.items()]
+    html = ["<div style='font-size:0.85rem;line-height:1.9'>"]
+    html.append(f"<b>{'Priority' if color_by == 'priority' else 'Site type'}</b><br>")
+    for label, color in items:
+        html.append(f"<span style='display:inline-block;width:12px;height:12px;border-radius:50%;"
+                    f"background:{color};margin-right:6px;vertical-align:middle'></span>{label}<br>")
+    html.append("<span style='display:inline-block;width:12px;height:12px;border-radius:50%;"
+                "border:2px solid #000;margin-right:6px;vertical-align:middle'></span>In today's routes<br>")
+    html.append("<br><b>Places</b><br>🟢 Start<br>🔵 Puskesmas<br>")
+    if plan_ready:
+        html.append("<br><b>Teams</b><br>")
+        for i, _ in enumerate(saved["teams"]):
+            html.append(f"<span style='display:inline-block;width:18px;height:4px;"
+                        f"background:{TEAM_COLORS[i % len(TEAM_COLORS)]};margin-right:6px;"
+                        f"vertical-align:middle'></span>Team {i + 1}<br>")
+    html.append("</div>")
+    return "".join(html)
+
+
+# ---------- page ----------
+
+st.title("Dengai")
+st.caption("Daily dengue inspection routes for Tallo, Makassar. Sites are predicted, not confirmed, "
+           "breeding sites; numbers show inspection value, not health outcomes.")
+
+tab_plan, tab_details, tab_day = st.tabs(["Today's plan", "Weights and comparisons", "Finish the day"])
+
+# ===== Tab 1: the coordinator's daily plan =====
+with tab_plan:
+    left, center, right = st.columns([0.8, 4, 1.8], gap="medium")
+
+    with right:
+        st.markdown("#### Start from")
+        st.selectbox("Puskesmas", list(pusk["name"]), key="start_name",
+                     help="Or click a puskesmas (blue cross) on the map.")
+        st.markdown("#### Teams")
+        for i, team in enumerate(ss.teams):
+            km, kh, kl = team_keys(i)
+            ss.setdefault(km, team["mode"])
+            ss.setdefault(kh, float(team["hours"]))
+            ss.setdefault(kl, datetime.strptime(team["leave"], "%H:%M").time())
+            color = TEAM_COLORS[i % len(TEAM_COLORS)]
+            with st.expander(f"Team {i + 1}: {mode_label(ss[km]).lower()}, {ss[kh]:g} h, {ss[kl].strftime('%H:%M')}"):
+                st.markdown(f"<div style='height:4px;background:{color};margin-bottom:8px'></div>",
+                            unsafe_allow_html=True)
+                st.selectbox("Travel by", list(D.MODES), key=km, format_func=mode_label)
+                st.slider("Hours in the field", 1.0, 10.0, step=0.5, key=kh)
+                st.time_input("Leave at", key=kl, step=900)
+                st.button("Remove team", key=f"rm{i}", on_click=remove_team, args=(i,),
+                          disabled=len(ss.teams) == 1)
+        st.button("Add team", on_click=add_team, use_container_width=True)
+        with st.expander("Advanced"):
+            seconds = st.slider("Optimizer search time (seconds)", 5, 60, int(saved["solver_seconds"]), 5,
+                                help="Longer can find slightly better routes.")
+
+    teams_now = current_teams()
+    start_now = start_point(ss.start_name)
+    stale = plan_ready and (teams_now != saved["teams"] or (saved_start or {}).get("name") != ss.start_name)
+
+    with left:
+        color_by = st.radio("Color dots by", ["priority", "site type"], label_visibility="collapsed")
+        st.markdown(legend(color_by), unsafe_allow_html=True)
+
+    with center:
+        show_routes = plan_ready and not stale
+        fmap = build_map("optimized", show_routes, start_now, color_by)
+        out = st_folium(fmap, height=520, use_container_width=True, key="plan_map",
+                        returned_objects=["last_object_clicked_tooltip"])
+        clicked = (out or {}).get("last_object_clicked_tooltip") or ""
+        if clicked.startswith("Puskesmas: ") and clicked[11:] != ss.start_name:
+            ss.pending_start = clicked[11:]
+            st.rerun()
+
+        generate = st.button("Generate team routes", type="primary", disabled=not can_plan,
+                             use_container_width=True)
+        if not can_plan:
+            st.info("Run python run_pipeline.py once to prepare sites and travel times.")
+        elif stale:
+            st.warning("Settings changed. Click Generate team routes to update the plan.")
+        elif not plan_ready:
+            st.info("Choose the puskesmas and teams, then click Generate team routes.")
+
+    if generate:
+        with st.spinner(f"Planning routes for {len(teams_now)} teams (about {seconds + 5} seconds)..."):
+            D.plan_day(teams_now, int(seconds), start=start_now, net=street_network())
+        st.cache_data.clear()
+        st.rerun()
+
+    if plan_ready and not stale:
+        summary = load_json(OUTPUTS / "summary_optimized.json")
+        costs = load_csv(OUTPUTS / "costs_optimized.csv")
+        plan = load_csv(OUTPUTS / "plan_optimized.csv")
+
+        st.divider()
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Sites inspected today", summary["sites_visited"])
+        c2.metric("High priority sites reached", f"{summary['high_priority_visited']} of {summary['high_priority_total']}")
+        if costs is not None:
+            total = costs.iloc[-1]
+            c3.metric("Cost of the day", idr(total["Total (IDR)"]))
+            c3.caption(f"About US$ {total['Total (USD)']:,.2f}")
+            if summary.get("cost_per_high_priority_idr"):
+                c4.metric("Cost per high priority site", idr(summary["cost_per_high_priority_idr"]))
+
+        routes_col, cost_col = st.columns([1, 1], gap="large")
+
+        with cost_col:
+            st.markdown("#### Cost table")
+            if costs is not None:
+                show = costs.copy()
+                show["Travel"] = show["Travel"].fillna("").map(lambda k: mode_label(k) if k else "")
+                money = [c for c in show.columns if "(IDR)" in c]
+                show[money] = show[money].apply(lambda col: col.map(lambda v: f"{v:,.0f}".replace(",", ".")))
+                show = show.drop(columns=["Total (USD)"])
+                st.dataframe(show, hide_index=True, width="stretch")
+                st.caption(f"Labor: {cfg.get('team_size', 2):g} people per team × hours × "
+                           f"{idr(cfg.get('wage_idr_per_hour', 0))} per hour. Fuel: street km × price per km "
+                           "(walking and bicycles cost nothing). Larvicide: expected real sites × price. "
+                           "Prices are placeholders in config/assumptions.csv until sourced.")
+            access = load_csv(Path("data/processed/site_access.csv"))
+            if access is not None and "hard_to_reach" in access and access["hard_to_reach"].any():
+                hard = access[access["hard_to_reach"]].merge(sites, left_on="id", right_on="site_id")
+                with st.expander(f"{len(hard)} site(s) need a special visit"):
+                    st.caption("Far from any mapped street or path (fenced, on a roof, across water). "
+                               "Left out of walking routes; plan them with the owner or a vehicle.")
+                    st.dataframe(hard[["site_id", "site_type", "priority", "meters_to_path"]]
+                                 .rename(columns={"meters_to_path": "Meters from path"}), hide_index=True)
+
+        with routes_col:
+            st.markdown("#### Team routes")
+            st.caption("Each team gets its stops in order with a free Google Maps link per stop. "
+                       "Add the leader's WhatsApp number once; it is saved on this computer.")
+            contacts = load_contacts()
+            site_info = sites.set_index("site_id")
+            start_name, start_latlon = saved_start["name"], (saved_start["lat"], saved_start["lon"])
+            for team_id, team in plan.groupby("team_id"):
+                key = str(int(team_id))
+                tcfg = saved["teams"][int(team_id) - 1]
+                msg_cfg = dict(cfg, travel_mode=tcfg["mode"], day_start=tcfg["leave"])
+                person = contacts.get(key, {})
+                color = TEAM_COLORS[(int(team_id) - 1) % len(TEAM_COLORS)]
+                title = f"Team {team_id}" + (f" ({person['name']})" if person.get("name") else "")
+                with st.expander(f"{title}: {len(team)} sites, {mode_label(tcfg['mode']).lower()}, "
+                                 f"leaves {tcfg['leave']}"):
+                    st.markdown(f"<div style='height:4px;background:{color};margin-bottom:8px'></div>",
+                                unsafe_allow_html=True)
+                    a, b = st.columns(2)
+                    name = a.text_input("Team leader", person.get("name", ""), key=f"name_{key}")
+                    phone = b.text_input("WhatsApp number", person.get("phone", ""), key=f"phone_{key}",
+                                         placeholder="+62 812 3456 7890")
+                    if name != person.get("name", "") or phone != person.get("phone", ""):
+                        contacts[key] = {"name": name, "phone": phone}
+                        save_contacts(contacts)
+                    text, links = N.team_message(team_id, team, start_name, start_latlon, msg_cfg, site_info)
+                    if name:
+                        text = text.replace(f"*Dengai: Team {team_id}*", f"*Dengai: Team {team_id}*\nHi {name}!", 1)
+                    x, y, z = st.columns(3)
+                    x.link_button(f"Send to {name or 'team'}" if phone else "Share on WhatsApp",
+                                  N.whatsapp_link(text, phone), type="primary" if phone else "secondary",
+                                  use_container_width=True)
+                    y.link_button("Preview route", links[0], use_container_width=True)
+                    z.download_button("Download", text, file_name=f"team_{team_id}.txt",
+                                      key=f"dl_{team_id}", use_container_width=True)
+                    with st.popover("See message"):
+                        st.code(text, language=None)
+            kml = N.plan_kml(plan, start_name, start_latlon, site_info,
+                             load_json(OUTPUTS / "paths_optimized.json"), cfg, title="Dengai: today's routes")
+            st.download_button("Download all routes for Google My Maps (.kml)", kml,
+                               file_name="dengai_routes.kml", mime="application/vnd.google-earth.kml+xml",
+                               help="Free: mymaps.google.com, create a map, Import, choose this file.")
+
+# ===== Tab 2: weights and comparisons =====
+with tab_details:
+    if plan_ready:
+        st.markdown("### Dengai compared with simpler strategies")
+        st.caption("Same teams, hours, start point, and travel times for every method.")
+        rows = []
+        for m in METHOD_LABELS:
+            s = load_json(OUTPUTS / f"summary_{m}.json")
+            rows.append({
+                "Method": METHOD_LABELS[m],
+                "Sites inspected": s["sites_visited"],
+                "High priority reached": f"{s['high_priority_visited']} of {s['high_priority_total']}",
+                "Total priority": s["total_priority"],
+                "Expected real sites": s["expected_real_sites"],
+                "Travel minutes": s["travel_minutes"],
+                "Cost (IDR)": idr(s["total_cost_idr"]) if s.get("total_cost_idr") else "",
+                "Cost per high priority site": idr(s["cost_per_high_priority_idr"])
+                if s.get("cost_per_high_priority_idr") else "",
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+        method = st.radio("Show routes on the map for", list(METHOD_LABELS), format_func=METHOD_LABELS.get,
+                          horizontal=True, index=2)
+        st_folium(build_map(method, True, saved_start), height=420, use_container_width=True, key="compare_map",
+                  returned_objects=[])
+
+    st.markdown("### How each site is prioritized")
+    st.markdown("**priority = type weight × confidence × exposure × clustering × urgency**")
+    weights = pd.DataFrame({
+        "Factor": ["Type weight", "Confidence", "Exposure", "Clustering", "Urgency"],
+        "Question it answers": ["How much does this kind of site breed mosquitoes?",
+                                "How likely is the detection real?",
+                                "How many people live nearby?",
+                                "Is it part of a hotspot?",
+                                "Did rain refill containers?"],
+        "Current values": [
+            ", ".join(f"{t} {cfg.get('w_' + t, 0.5):g}" for t in ["tire", "container", "drain", "trash"]),
+            f"from the detector; {cfg.get('default_confidence', 0.87):g} if missing",
+            f"buildings within {cfg.get('buffer_m', 100):g} m, scaled {cfg.get('scale_min', 0.5):g} to {cfg.get('scale_max', 1.5):g}",
+            f"other sites within {cfg.get('buffer_m', 100):g} m, scaled {cfg.get('scale_min', 0.5):g} to {cfg.get('scale_max', 1.5):g}",
+            f"{cfg.get('rain_boost', 1.3):g} after {cfg.get('rain_threshold_mm', 10):g} mm of rain in 7 days, else 1",
+        ],
+        "Source": ["Tun Lin 2009; Mwakutwaa 2023 (exact values our choice)",
+                   "Hassan et al. 2026, U-Net++ F1 0.87 in Tallo",
+                   "Aedes aegypti flight range about 106 m (Moore and Brown 2022)",
+                   "Same radius; one visit clears a hotspot",
+                   "Egg to adult in 7 to 10 days (CDC)"],
+    })
+    st.dataframe(weights, hide_index=True, width="stretch")
+    st.caption("Factors are multiplied, so a weak one pulls the score down: a probably false detection "
+               "stays low even in a crowded block. High priority means the top 25% of scores.")
+
+    if "priority" in sites:
+        top = sites.sort_values("priority", ascending=False).iloc[0]
+        st.markdown(f"**Example, top site {top['site_id']}:** {top['site_type']} "
+                    f"{top['type_weight']:g} × confidence {top['confidence']:g} × exposure {top['exposure']:g} "
+                    f"× clustering {top['clustering']:g} × urgency {top['urgency']:g} = **{top['priority']:.2f}**")
+        with st.expander("Top 20 sites"):
+            cols = [c for c in ["site_id", "site_type", "confidence", "buildings_nearby", "sites_nearby",
+                                "exposure", "clustering", "priority"] if c in sites]
+            st.dataframe(sites.sort_values("priority", ascending=False)[cols].head(20), hide_index=True)
+
+    st.markdown("### How routes are chosen")
+    st.markdown(
+        "A **team orienteering problem** (Chao, Golden and Wasil 1996): teams cannot visit every site in a day, "
+        "so the plan chooses which sites and in what order to collect the most priority, with every team back "
+        "before its day ends. Solved with Google OR-Tools: every site is optional, skipping one costs its "
+        "priority, and guided local search improves the plan for the chosen search time. Each team can travel "
+        "differently and work different hours. Full equations: `docs/METHODS.md`.")
+
+    robust, sens = load_csv(OUTPUTS / "robustness.csv"), load_csv(OUTPUTS / "sensitivity.csv")
+    if robust is not None or sens is not None:
+        st.markdown("### Robustness and sensitivity")
+        st.caption("Computed by run_pipeline.py with the default settings in assumptions.csv.")
+    if robust is not None:
         show = pd.DataFrame({
-            "Reality": r["reality"],
-            "Method": r["method"].map(METHOD_LABELS),
+            "Reality": robust["reality"],
+            "Method": robust["method"].map(METHOD_LABELS),
             "Real sites reached": [f"{m} ({a} to {b})" for m, a, b in
-                                   zip(r["real_sites_mean"], r["real_sites_p5"], r["real_sites_p95"])],
+                                   zip(robust["real_sites_mean"], robust["real_sites_p5"], robust["real_sites_p95"])],
             "Real value reached": [f"{m} ({a} to {b})" for m, a, b in
-                                   zip(r["real_value_mean"], r["real_value_p5"], r["real_value_p95"])],
+                                   zip(robust["real_value_mean"], robust["real_value_p5"], robust["real_value_p95"])],
         })
         st.dataframe(show, hide_index=True, width="stretch")
-        opt = r[r["method"] == "optimized"]
+        opt = robust[robust["method"] == "optimized"]
         if "beats_nearest_pct" in opt:
-            st.caption(f"Dengai beats nearest next in {opt['beats_nearest_pct'].min():.0f}% "
-                       f"and highest priority next in {opt['beats_priority_pct'].min():.0f}% "
-                       "of simulated realities.")
-    if sens_file.exists():
-        s = pd.read_csv(sens_file)
-        st.caption("Each row changes one assumption and replans with every method.")
-        st.dataframe(s.rename(columns={
+            st.caption(f"1,000 simulated realities where each site is real with its confidence. Dengai beats "
+                       f"nearest next in {opt['beats_nearest_pct'].min():.0f}% and highest priority next in "
+                       f"{opt['beats_priority_pct'].min():.0f}% of them, even if the detector is 25% worse.")
+    if sens is not None:
+        st.dataframe(sens.rename(columns={
             "assumption": "Assumption changed", "case": "Case",
             "nearest_priority": "Nearest next", "priority_first_priority": "Priority next",
             "optimized_priority": "Dengai", "gain_vs_best_baseline_pct": "Gain vs best baseline (%)",
             "optimized_high_priority": "Dengai high priority reached"}),
             hide_index=True, width="stretch")
+        st.caption("Each row changes one assumption and replans with every method.")
 
-with st.expander("Top priority sites"):
-    cols = [c for c in ["site_id", "site_type", "confidence", "buildings_nearby", "sites_nearby",
-                        "exposure", "clustering", "priority"] if c in sites]
-    st.dataframe(sites.sort_values("priority", ascending=False)[cols].head(20) if "priority" in sites
-                 else sites[cols].head(20), hide_index=True)
+# ===== Tab 3: finish the day =====
+with tab_day:
+    st.markdown("### Finish the day")
+    st.caption("Team leaders report what happened: which sites were real, which were false alarms, "
+               "what could not be reached, and anything that slowed them down. Paste WhatsApp replies "
+               "or type them here, in Indonesian or English.")
+    n_teams = len(saved["teams"]) if plan_ready else len(ss.teams)
+    notes = {}
+    for i in range(n_teams):
+        notes[str(i + 1)] = st.text_area(f"Team {i + 1}", key=f"debrief_{i + 1}", height=90,
+                                         placeholder="Stops 3 and 7 were AC units, not tires. Gate locked at stop 12. "
+                                                     "Tires took longer than 20 minutes.")
+    general = st.text_area("Anything else from the coordinator", key="debrief_general", height=70)
+    if st.button("Save today's reports", type="primary"):
+        DEBRIEF_DIR.mkdir(parents=True, exist_ok=True)
+        record = {"date": date.today().isoformat(), "teams": notes, "coordinator": general,
+                  "plan_settings": saved}
+        (DEBRIEF_DIR / f"{date.today().isoformat()}.json").write_text(json.dumps(record, indent=2))
+        st.success("Saved. The AI agent will turn these into a report and suggested changes (coming next).")

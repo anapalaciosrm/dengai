@@ -32,3 +32,9 @@ max_offpath_m,300,meters,design choice,Sites farther than this from any mapped p
 bike_speed_kmh,10,km per hour,placeholder,Bicycle in dense city streets; ask mentor
 car_speed_kmh,12,km per hour,placeholder,Car in Makassar traffic; many Tallo alleys are too narrow for cars
 park_min,2,minutes,design choice,Time to park a bike or motorbike at each stop (not used for walking)
+team_size,2,people,placeholder,People per field team; ask mentor; Lara to confirm
+wage_idr_per_hour,20000,IDR per hour,placeholder,Field worker pay per person per hour; Lara to source (Makassar minimum wage)
+fuel_idr_per_km_moto,250,IDR per km,placeholder,Motorbike fuel per km (fuel price divided by km per liter); Lara to source
+fuel_idr_per_km_car,850,IDR per km,placeholder,Car fuel per km; Lara to source
+larvicide_idr_per_site,5000,IDR per site,placeholder,Larvicide used per real breeding site treated; Lara to source
+idr_per_usd,16000,IDR per USD,placeholder,Exchange rate for the USD column; Lara to update
