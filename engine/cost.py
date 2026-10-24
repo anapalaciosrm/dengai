@@ -1,6 +1,6 @@
 """Cost of a daily plan: labor, fuel, and larvicide, per team and in total.
 
-All prices come from config/assumptions.csv (placeholders until the team sources them):
+All prices come from config/assumptions.csv, with their sources:
     wage_idr_per_hour             pay per paid worker per hour in the field
     volunteer_stipend_idr_per_day transport or meal allowance per volunteer (0 if none)
     fuel_idr_per_km_moto / _car   fuel per km; walking and bicycles cost nothing

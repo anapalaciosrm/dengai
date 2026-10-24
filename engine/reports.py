@@ -2,8 +2,8 @@
 
 Each team gets a link (by WhatsApp) to a small mobile page in the Dengai app. The leader marks
 every stop of the day's route and writes a short summary. Reports are saved per plan in
-outputs/reports/<plan_id>/team_<n>.json and shown in the app's "Finish the day" tab, where the
-AI agent can turn them into a daily report and suggested changes.
+outputs/reports/<plan_id>/team_<n>.json and shown in the app's "Finish the day" tab, which turns
+them into a daily report and carries missed sites over to the next day's plan.
 
 The link carries a short key so only the team that received it can open its form.
 Phones must be able to reach the app's address: the "Network URL" Streamlit prints works for

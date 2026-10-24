@@ -2,7 +2,7 @@
 
 Each scenario changes the puskesmas inputs (people, vehicles, budget, hours) and replans with
 both baselines and the optimizer. Nothing in outputs/ is overwritten except scenarios.csv.
-Prices are the placeholders in assumptions.csv until the team sources them.
+Prices come from config/assumptions.csv (sources listed there).
 
 Run: python engine/scenarios.py      (about 10 seconds per scenario)
 """

@@ -2,7 +2,7 @@
 
     site_id, lat, lon, site_type, confidence, detections, source_id
 
-We do not know the exact format yet, so this accepts what detection models usually produce:
+The real data format is not fixed yet, so this accepts what detection models usually produce:
     * Files: .csv, .xlsx, .geojson / .json, .shp, .gpkg, .kml
     * Geometry: points, or polygons and lines (for example tire outlines from a segmentation
       model like the Rosser lab's U-Net++), which become their center point

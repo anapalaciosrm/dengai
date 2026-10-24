@@ -41,7 +41,7 @@ def get_boundary():
                 return gdf[["geometry"]].assign(name="Tallo").to_crs(WGS)
         except Exception as err:  # keep trying the next spelling
             print(f"Could not geocode '{name}': {err}")
-    raise RuntimeError("No boundary found. Ask Claude for a bounding box fallback.")
+    raise RuntimeError("No boundary found. Check the internet connection or the place names above.")
 
 
 def buffered(boundary, meters):

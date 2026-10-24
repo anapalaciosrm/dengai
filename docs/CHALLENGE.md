@@ -1,9 +1,9 @@
 # Challenge brief (from the organizers)
 
 Source: Stanford Cleantech Hackathon, Track 2. Joelle Rosser MD and Matthew Leipzig, Stanford.
-This is the organizers' text, kept here so everyone (and Copilot) works from the same brief.
+The organizers' text, kept here for reference.
 
-🌎2. AI-Enabled Route Planning for Dengue Vector Surveillance
+2. AI-Enabled Route Planning for Dengue Vector Surveillance
 Location: Makassar, Indonesia
 Background
 Dengue is a significant public health challenge in many tropical urban environments. One component of vector-control programs involves identifying, inspecting, and addressing environmental conditions that may support mosquito breeding, such as shallow water-holding containers including discarded tires, accumulated trash, flower pots, and drainage systems.

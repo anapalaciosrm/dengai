@@ -1,7 +1,9 @@
 """Make realistic synthetic breeding sites inside Tallo, Makassar.
 
-Why: the organizers' data may arrive late or be restricted. With fake data in the
-same format, the whole pipeline can be built and tested now.
+Why: the real Tallo detections were not released during the hackathon (the brief made them
+subject to data-sharing approval, with synthetic data as the fallback). These synthetic sites
+follow the published studies, so the pipeline can be built and evaluated; load_sites.py swaps
+in real detections when they are available.
 
 Run (after engine/setup_area.py):
     python engine/make_fake_sites.py

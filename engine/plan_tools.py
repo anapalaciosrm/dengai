@@ -114,7 +114,7 @@ def team_route(team):
 
 
 def summarize(method, plan, sites, travel):
-    """Key numbers for comparing plans. Uses is_real only if present (fake data evaluation)."""
+    """Key numbers for comparing plans. Uses is_real only if present (synthetic data evaluation)."""
     visited = list(plan["site_id"]) if len(plan) else []
     travel_total = 0.0
     for team_id, team in plan.groupby("team_id"):

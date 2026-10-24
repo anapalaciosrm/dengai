@@ -4,7 +4,7 @@ Tabs:
     Today's plan            the coordinator: choose puskesmas and teams, generate routes, see cost,
                             send each team its route on WhatsApp
     Weights and comparisons how sites are prioritized, Dengai vs simpler strategies, robustness
-    Finish the day          teams report what happened (the AI agent works from this)
+    Finish the day          teams report what happened; missed sites move to the next day
 """
 
 import json
@@ -599,7 +599,7 @@ with tab_plan:
                            + (f", volunteers {usd(cfg.get('volunteer_stipend_idr_per_day', 0))} per day"
                               if cfg.get("volunteer_stipend_idr_per_day") else ", volunteers unpaid")
                            + ". Fuel: street km × price per km. Larvicide: expected real sites × price. "
-                             "Prices are placeholders in config/assumptions.csv until sourced.")
+                             "Prices and sources are in config/assumptions.csv.")
             access = load_csv(Path("data/processed/site_access.csv"))
             if access is not None and "hard_to_reach" in access and access["hard_to_reach"].any():
                 hard = access[access["hard_to_reach"]].merge(sites, left_on="id", right_on="site_id")
@@ -706,7 +706,7 @@ with tab_details:
     if scen is not None:
         st.markdown("### What if? Scenarios")
         st.caption("The same sites under different people, vehicles, hours, and budgets. Every method replans "
-                   "each scenario. Run python engine/scenarios.py to update. Prices are placeholders.")
+                   "each scenario. Run python engine/scenarios.py to update.")
         st.dataframe(scen, hide_index=True, width="stretch")
 
     st.markdown("### How each site is prioritized")
@@ -959,4 +959,4 @@ with tab_day:
                   "pasted": {str(t["team_id"]): ss.get(f"debrief_{t['team_id']}", "") for t in team_list},
                   "coordinator": general, "plan_settings": saved}
         (DEBRIEF_DIR / f"{date.today().isoformat()}.json").write_text(json.dumps(record, indent=2, ensure_ascii=False))
-        st.success("Saved. Next: the AI agent turns this into a daily report and suggested changes.")
+        st.success("Saved. The debrief is stored in outputs/debriefs/ with the plan and the team reports.")

@@ -1,16 +1,16 @@
 key,value,unit,status,source
-n_teams,4,teams,placeholder,Ask mentor: how many field teams the puskesmas fields
-hours_per_day,6,hours,placeholder,Ask mentor: field hours per day after travel to base and breaks
-travel_mode,walk,mode,placeholder,Ask mentor: foot or motorbike
+n_teams,4,teams,estimate,To confirm with the puskesmas: how many field teams the puskesmas fields
+hours_per_day,6,hours,estimate,To confirm with the puskesmas: field hours per day after travel to base and breaks
+travel_mode,walk,mode,estimate,To confirm with the puskesmas: foot or motorbike
 walk_speed_kmh,4,km per hour,sourced estimate,Typical adult walking pace about 5 km/h; reduced for dense alleys
-moto_speed_kmh,15,km per hour,placeholder,City traffic estimate; check Makassar traffic data
-inspect_min_container,10,minutes,placeholder,No published figure found; ask mentor; sensitivity test 10/20/30
-inspect_min_drain,15,minutes,placeholder,No published figure found; ask mentor; sensitivity test
-inspect_min_tire,20,minutes,placeholder,No published figure found; tires may need removal; sensitivity test
-inspect_min_trash,20,minutes,placeholder,No published figure found; ask mentor; sensitivity test
+moto_speed_kmh,15,km per hour,estimate,City traffic estimate; check Makassar traffic data
+inspect_min_container,10,minutes,estimate,No published figure found; to confirm with the puskesmas; sensitivity test 10/20/30
+inspect_min_drain,15,minutes,estimate,No published figure found; to confirm with the puskesmas; sensitivity test
+inspect_min_tire,20,minutes,estimate,No published figure found; tires may need removal; sensitivity test
+inspect_min_trash,20,minutes,estimate,No published figure found; to confirm with the puskesmas; sensitivity test
 w_tire,1.0,weight,sourced,Key container concept: Tun Lin et al. 2009; tires among top pupae producers in Mwakutwaa et al. 2023
 w_container,0.8,weight,partly sourced,Drums and pots highly productive (Mwakutwaa et al. 2023); exact value is our choice
-w_drain,0.7,weight,placeholder,Our choice; confirm local productivity with mentor
+w_drain,0.7,weight,estimate,Our choice; confirm local productivity with the health office
 w_trash,0.6,weight,partly sourced,Rosser lab high risk vs low risk trash classes (2024; 2025); exact value is our choice
 default_confidence,0.87,probability,sourced,U-Net++ tire detection F1 0.87 in Tallo (Hassan et al. 2026); used if data has no confidence
 buffer_m,100,meters,sourced,Average Aedes aegypti flight range about 106 m (Moore and Brown 2022 meta analysis)
@@ -20,22 +20,22 @@ rain_mm_last7d,0,mm,update daily,CHIRPS or local weather; containers refill afte
 rain_boost,1.3,multiplier,design choice,Applied if rain_mm_last7d above threshold; egg to adult 7 to 10 days (CDC)
 rain_threshold_mm,10,mm,design choice,Rain needed to count as a refill event; tested in sensitivity analysis
 monte_carlo_runs,1000,runs,design choice,Enough for stable averages; standard practice
-start_puskesmas,auto,name,placeholder,auto = puskesmas inside Tallo closest to the sites; replace with the name the mentor confirms
+start_puskesmas,auto,name,estimate,auto = puskesmas inside Tallo closest to the sites; replace with the confirmed puskesmas
 high_priority_quantile,0.75,share,design choice,Sites in the top 25% of priority count as high priority in reports
 detour_factor,1.3,multiplier,design choice,Straight line fallback only if the street network is missing
 solver_seconds,30,seconds,design choice,OR-Tools search time limit; longer can find slightly better plans; lower for a live demo
-day_start,08:00,time,placeholder,Ask mentor: when teams leave the puskesmas; used for arrival times in team messages
+day_start,08:00,time,estimate,To confirm with the puskesmas: when teams leave the puskesmas; used for arrival times in team messages
 nav_max_waypoints,9,stops,sourced,Google Maps URLs allow up to 9 waypoints per directions link (3 in mobile browsers)
-merge_radius_m,10,meters,design choice,Detections closer than this are one site (a tire pile is inspected once); ask mentor
-offpath_slowdown,2,multiplier,design choice,Walking from the nearest mapped path to a site (yards and unmapped alleys) is assumed twice as slow as a street; ask mentor
+merge_radius_m,10,meters,design choice,Detections closer than this are one site (a tire pile is inspected once); to confirm with the puskesmas
+offpath_slowdown,2,multiplier,design choice,Walking from the nearest mapped path to a site (yards and unmapped alleys) is assumed twice as slow as a street; to confirm with the puskesmas
 max_offpath_m,300,meters,design choice,Sites farther than this from any mapped path are left out of walking routes and listed for a special visit
-bike_speed_kmh,10,km per hour,placeholder,Bicycle in dense city streets; ask mentor
-car_speed_kmh,12,km per hour,placeholder,Car in Makassar traffic; many Tallo alleys are too narrow for cars
+bike_speed_kmh,10,km per hour,estimate,Bicycle in dense city streets; to confirm with the puskesmas
+car_speed_kmh,12,km per hour,estimate,Car in Makassar traffic; many Tallo alleys are too narrow for cars
 park_min,2,minutes,design choice,Time to park a bike or motorbike at each stop (not used for walking)
-team_size,2,people,placeholder,People per field team; ask mentor; Lara to confirm
+team_size,2,people,estimate,People per field team; to confirm with the puskesmas
 wage_idr_per_hour,23980,IDR per hour,sourced,"Makassar UMK 2026 Rp4,148,179/month (South Sulawesi Governor's Decree 2142/XII/2025, via GoodStats) / 173 h = Rp23,980/h, about $1.34/h. Minimum wage, so a floor. Cost Sources Log (Lara)"
 fuel_idr_per_km_moto,222,IDR per km,sourced,"Pertalite Rp10,000/L (Bisnis.com, 16 Oct 2026) / 45 km/L (Honda BeAT: 60.6 lab, 52.9 real road; 45 conservative for stop and go) = Rp222/km. Range Rp165 to 222. Cost Sources Log (Lara)"
-fuel_idr_per_km_car,850,IDR per km,placeholder,Car fuel per km; Lara to source
+fuel_idr_per_km_car,850,IDR per km,estimate,Car fuel per km; not yet sourced
 larvicide_idr_per_site,860,IDR per site,sourced,"One 10 g dose temephos 1% (Abate) per site at bulk price Rp86/g (Rp65,000 to 86,000 per kg, KlikDokter). High case retail 10 g sachet Rp4,845 (K-24). Dose 1 g per 10 L (BASF label). Cost Sources Log (Lara)"
 idr_per_usd,17900,IDR per USD,sourced,"Bisnis.com, 2 Oct 2026. Cost Sources Log (Lara)"
 volunteer_stipend_idr_per_day,30000,IDR per day,partly sourced,"Rp30,000 jumantik transport per field visit (example puskesmas BOK budget). Monthly jumantik honor ranges Rp200,000 (Malang 2024) to Rp750,000 (Jakarta 2026). Makassar rate (Perwali 22/2025) still to retrieve. Cost Sources Log (Lara)"
