@@ -618,9 +618,6 @@ with tab_plan:
             base = st.text_input("Address teams' phones open for reports", key="base_url",
                                  help="Use the Network URL Streamlit prints (phones on the same Wi-Fi), "
                                       "or the address of a deployed app.")
-            if "localhost" in base or "127.0.0.1" in base:
-                st.caption("⚠️ Phones cannot open localhost. Paste your tunnel address "
-                           "(https://...trycloudflare.com) or the Network URL from the terminal.")
             base = clean_base(base)
             remember_base(base)
             plan_id = saved.get("plan_id", "default")
@@ -798,9 +795,6 @@ with tab_day:
     head.markdown(f"**1. Send each team its report link** · {len(received)} of {len(team_list)} reports received")
     if refresh.button("Check for new reports", use_container_width=True):
         st.rerun()
-    if "localhost" in base or "127.0.0.1" in base:
-        st.warning("Links point to localhost, which phones cannot open. Paste your tunnel address "
-                   "(https://...trycloudflare.com) in Today's plan, Team routes. It is remembered after that.")
 
     all_links = []
     for t in team_list:
