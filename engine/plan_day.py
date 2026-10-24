@@ -145,7 +145,7 @@ def travel_for_mode(travel, cfg, mode, off=None):
     return pd.DataFrame(converted.round(2), index=travel.index, columns=travel.columns)
 
 
-def plan_day(puskesmas, seconds, net=None):
+def plan_day(puskesmas, seconds, net=None, save=True):
     """Form teams, plan every method, and save everything. Returns (summaries, teams, notes).
 
     puskesmas: list of {"name", "lat", "lon", "budget_idr", "paid", "volunteers",
@@ -193,13 +193,17 @@ def plan_day(puskesmas, seconds, net=None):
         table = K.plan_costs(plan, teams, sites, km, cfg)
         summary["total_cost_idr"] = int(table.iloc[-1]["Total (IDR)"])
         summary["cost_per_high_priority_idr"] = K.cost_per_high_priority(table, summary)
+        summaries[method] = summary
+        if not save:              # scenario runs (scenarios.py) only need the numbers
+            continue
         P.save(method, plan, summary)
         table.to_csv(C.OUTPUTS / f"costs_{method}.csv", index=False)
         if net is not None and n:
             with open(C.OUTPUTS / f"paths_{method}.json", "w") as f:
                 json.dump(R.paths_for_plan(plan, points, net), f)
-        summaries[method] = summary
 
+    if not save:
+        return summaries, teams, notes
     with open(SETTINGS_FILE, "w") as f:
         json.dump({"puskesmas": puskesmas, "teams": teams, "notes": notes,
                    "solver_seconds": seconds, "plan_id": R2.new_plan_id(),

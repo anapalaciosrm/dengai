@@ -13,6 +13,7 @@ STEPS = [
     "engine/travel_matrix.py",
     "engine/plan_day.py",      # baselines + optimizer + costs + street paths, default day
     "engine/evaluate.py",
+    "engine/scenarios.py",     # what if table for the slides (about a minute)
 ]
 
 # A new pipeline run plans with assumptions.csv, so forget the app's last custom settings.

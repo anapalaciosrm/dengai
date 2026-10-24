@@ -642,6 +642,13 @@ with tab_details:
         st_folium(build_map(method, True, [p["name"] for p in saved["puskesmas"]]), height=420, use_container_width=True, key="compare_map",
                   returned_objects=[])
 
+    scen = load_csv(OUTPUTS / "scenarios.csv")
+    if scen is not None:
+        st.markdown("### What if? Scenarios")
+        st.caption("The same sites under different people, vehicles, hours, and budgets. Every method replans "
+                   "each scenario. Run python engine/scenarios.py to update. Prices are placeholders.")
+        st.dataframe(scen, hide_index=True, width="stretch")
+
     st.markdown("### How each site is prioritized")
     st.markdown("**priority = type weight × confidence × exposure × clustering × urgency**")
     weights = pd.DataFrame({
