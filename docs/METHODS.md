@@ -109,12 +109,12 @@ visits $i$; $u_{im}$ is the position of $i$ in team $m$'s route.
 
 $$
 \begin{aligned}
-\max \quad & \sum_{m=1}^{M} \sum_{i=2}^{N-1} S_i \, y_{im} & & (1) \\[1ex]
-\text{subject to} \quad & \sum_{m}\sum_{j} x_{1jm} = \sum_{m}\sum_{i} x_{iNm} = M & & (2) \\[1ex]
-& \sum_{m} y_{km} \le 1 & \forall k & \quad (3) \\[1ex]
-& \sum_{i} x_{ikm} = \sum_{j} x_{kjm} = y_{km} & \forall k, m & \quad (4) \\[1ex]
-& \sum_{i}\sum_{j} t_{ij}\, x_{ijm} \le T_{max} & \forall m & \quad (5) \\[1ex]
-& u_{im} - u_{jm} + 1 \le (N-1)(1 - x_{ijm}) & \forall i, j, m & \quad (6) \\[1ex]
+\max \quad & \sum_{m=1}^{M} \sum_{i=2}^{N-1} S_i \, y_{im} & & (1) \\
+\text{subject to} \quad & \sum_{m}\sum_{j} x_{1jm} = \sum_{m}\sum_{i} x_{iNm} = M & & (2) \\
+& \sum_{m} y_{km} \le 1 & \forall k & \quad (3) \\
+& \sum_{i} x_{ikm} = \sum_{j} x_{kjm} = y_{km} & \forall k, m & \quad (4) \\
+& \sum_{i}\sum_{j} t_{ij}\, x_{ijm} \le T_{max} & \forall m & \quad (5) \\
+& u_{im} - u_{jm} + 1 \le (N-1)(1 - x_{ijm}) & \forall i, j, m & \quad (6) \\
 & x_{ijm}, y_{im} \in \{0, 1\} & & \quad (7)
 \end{aligned}
 $$
