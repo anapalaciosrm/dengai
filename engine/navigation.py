@@ -120,6 +120,13 @@ def plan_kml(plan, start_name, start_latlon, sites=None, paths=None, cfg=None, t
     return "\n".join(parts)
 
 
-def whatsapp_link(text):
-    """Link that opens WhatsApp with this message ready to send (user picks the chat)."""
-    return "https://wa.me/?text=" + quote(text)
+def whatsapp_link(text, phone=None):
+    """Link that opens WhatsApp with this message ready to send.
+
+    phone: international number, any format ("+62 812-3456-789" works). With a number the
+    chat with that person opens directly; without one, the sender picks the chat.
+    """
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]  # Indonesian local format 0812... -> 62812...
+    return f"https://wa.me/{digits}?text=" + quote(text)

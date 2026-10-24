@@ -30,53 +30,66 @@ import config as C  # noqa: E402
 METHODS = ["nearest", "priority", "optimized"]
 
 
-def main():
+def load_network():
+    """Load the street network once. Returns a dict used by paths_for_plan, or None."""
     if not C.GRAPH_FILE.exists():
-        print("No street network file; the map will draw straight lines. Run engine/setup_area.py.")
-        return
-
+        return None
+    import geopandas as gpd
     import osmnx as ox
 
     graph = ox.load_graphml(C.GRAPH_FILE)
-    walk = graph.to_undirected()  # people can walk both ways on a street
     nodes = ox.graph_to_gdfs(graph, edges=False)
     nodes_m = nodes.to_crs(C.UTM)
-    node_ids = list(nodes.index)
-    node_xy = np.column_stack([nodes_m.geometry.x, nodes_m.geometry.y])
-    node_latlon = {n: (float(nodes.at[n, "y"]), float(nodes.at[n, "x"])) for n in node_ids}
+    return {
+        "walk": graph.to_undirected(),  # people can walk both ways on a street
+        "ids": list(nodes.index),
+        "xy": np.column_stack([nodes_m.geometry.x, nodes_m.geometry.y]),
+        "latlon": {n: (float(nodes.at[n, "y"]), float(nodes.at[n, "x"])) for n in nodes.index},
+        "gpd": gpd,
+    }
 
-    def snap(lat, lon):
-        """Nearest street node to a point (same brute force method as travel_matrix.py)."""
-        import geopandas as gpd
-        pt = gpd.GeoSeries(gpd.points_from_xy([lon], [lat]), crs=C.WGS).to_crs(C.UTM).iloc[0]
-        return node_ids[int(np.hypot(node_xy[:, 0] - pt.x, node_xy[:, 1] - pt.y).argmin())]
 
+def snap(net, lat, lon):
+    """Nearest street node to a point (same brute force method as travel_matrix.py)."""
+    gpd = net["gpd"]
+    pt = gpd.GeoSeries(gpd.points_from_xy([lon], [lat]), crs=C.WGS).to_crs(C.UTM).iloc[0]
+    return net["ids"][int(np.hypot(net["xy"][:, 0] - pt.x, net["xy"][:, 1] - pt.y).argmin())]
+
+
+def paths_for_plan(plan, start, net):
+    """{team_id: [[lat, lon], ...]} following the streets, START -> stops -> START."""
+    start_node = snap(net, start["lat"], start["lon"])
+    paths = {}
+    for team_id, team in plan.groupby("team_id"):
+        team = team.sort_values("visit_order")
+        stops = [(start["lat"], start["lon"], start_node)]
+        stops += [(r.lat, r.lon, snap(net, r.lat, r.lon)) for r in team.itertuples()]
+        stops += [stops[0]]  # back to the puskesmas
+
+        line = []
+        for (lat_a, lon_a, a), (lat_b, lon_b, b) in zip(stops[:-1], stops[1:]):
+            line.append([lat_a, lon_a])  # the stop itself, then onto the street
+            try:
+                route = nx.shortest_path(net["walk"], a, b, weight="length")
+                line += [list(net["latlon"][n]) for n in route]
+            except nx.NetworkXNoPath:
+                pass  # disconnected streets: fall back to a straight segment
+            line.append([lat_b, lon_b])
+        paths[str(int(team_id))] = [[round(y, 6), round(x, 6)] for y, x in line]
+    return paths
+
+
+def main():
+    net = load_network()
+    if net is None:
+        print("No street network file; the map will draw straight lines. Run engine/setup_area.py.")
+        return
     start = pd.read_csv(C.START_FILE).iloc[0]
-    start_node = snap(start["lat"], start["lon"])
-
     for method in METHODS:
         plan_file = C.OUTPUTS / f"plan_{method}.csv"
         if not plan_file.exists():
             continue
-        plan = pd.read_csv(plan_file)
-        paths = {}
-        for team_id, team in plan.groupby("team_id"):
-            team = team.sort_values("visit_order")
-            stops = [(start["lat"], start["lon"], start_node)]
-            stops += [(r.lat, r.lon, snap(r.lat, r.lon)) for r in team.itertuples()]
-            stops += [stops[0]]  # back to the puskesmas
-
-            line = []
-            for (lat_a, lon_a, a), (lat_b, lon_b, b) in zip(stops[:-1], stops[1:]):
-                line.append([lat_a, lon_a])  # the stop itself, then onto the street
-                try:
-                    route = nx.shortest_path(walk, a, b, weight="length")
-                    line += [list(node_latlon[n]) for n in route]
-                except nx.NetworkXNoPath:
-                    pass  # disconnected streets: fall back to a straight segment
-                line.append([lat_b, lon_b])
-            paths[str(int(team_id))] = [[round(y, 6), round(x, 6)] for y, x in line]
-
+        paths = paths_for_plan(pd.read_csv(plan_file), start, net)
         with open(C.OUTPUTS / f"paths_{method}.json", "w") as f:
             json.dump(paths, f)
         print(f"{method:>9}: street paths for {len(paths)} teams")

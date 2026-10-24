@@ -29,3 +29,6 @@ nav_max_waypoints,9,stops,sourced,Google Maps URLs allow up to 9 waypoints per d
 merge_radius_m,10,meters,design choice,Detections closer than this are one site (a tire pile is inspected once); ask mentor
 offpath_slowdown,2,multiplier,design choice,Walking from the nearest mapped path to a site (yards and unmapped alleys) is assumed twice as slow as a street; ask mentor
 max_offpath_m,300,meters,design choice,Sites farther than this from any mapped path are left out of walking routes and listed for a special visit
+bike_speed_kmh,10,km per hour,placeholder,Bicycle in dense city streets; ask mentor
+car_speed_kmh,12,km per hour,placeholder,Car in Makassar traffic; many Tallo alleys are too narrow for cars
+park_min,2,minutes,design choice,Time to park a bike or motorbike at each stop (not used for walking)

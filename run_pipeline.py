@@ -4,6 +4,7 @@ Steps that need internet (engine/setup_area.py) are not included; run that once 
 """
 
 import subprocess
+from pathlib import Path
 import sys
 
 STEPS = [
@@ -15,6 +16,9 @@ STEPS = [
     "engine/route_paths.py",
     "engine/evaluate.py",
 ]
+
+# A new pipeline run plans with assumptions.csv, so forget the app's last custom settings.
+Path("outputs/plan_settings.json").unlink(missing_ok=True)
 
 for step in STEPS:
     print(f"\n=== {step} ===")
