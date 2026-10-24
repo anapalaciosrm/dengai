@@ -32,6 +32,7 @@ import config as C  # noqa: E402
 import cost as K  # noqa: E402
 import optimizer as O  # noqa: E402
 import plan_tools as P  # noqa: E402
+import reports as R2  # noqa: E402
 import teams as T  # noqa: E402
 
 MODES = {  # key: (label, speed key in assumptions.csv, default km/h)
@@ -200,7 +201,7 @@ def plan_day(puskesmas, seconds, net=None):
 
     with open(SETTINGS_FILE, "w") as f:
         json.dump({"puskesmas": puskesmas, "teams": teams, "notes": notes,
-                   "solver_seconds": seconds}, f, indent=2)
+                   "solver_seconds": seconds, "plan_id": R2.new_plan_id()}, f, indent=2)
     return summaries, teams, notes
 
 
@@ -216,7 +217,8 @@ def default_puskesmas(cfg):
 def load_settings(cfg):
     """Inputs and teams of the last Generate click, or defaults from assumptions.csv."""
     settings = {"puskesmas": default_puskesmas(cfg) if C.START_FILE.exists() else [],
-                "teams": None, "notes": {}, "solver_seconds": int(cfg.get("solver_seconds", 30))}
+                "teams": None, "notes": {}, "solver_seconds": int(cfg.get("solver_seconds", 30)),
+                "plan_id": "default"}
     if SETTINGS_FILE.exists():
         saved = json.loads(SETTINGS_FILE.read_text())
         if "puskesmas" in saved:

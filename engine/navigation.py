@@ -53,7 +53,7 @@ def clock(day_start, minutes):
         return f"+{minutes:.0f} min"
 
 
-def team_message(team_id, team, start_name, start_latlon, cfg, sites=None, title="Dengai"):
+def team_message(team_id, team, start_name, start_latlon, cfg, sites=None, title="Dengai", report_link=None):
     """WhatsApp ready text for one team: ordered stops, times, and map links.
 
     team: rows of the plan table for this team (site_id, lat, lon, arrival_minute).
@@ -78,7 +78,10 @@ def team_message(team_id, team, start_name, start_latlon, cfg, sites=None, title
     for k, link in enumerate(links, start=1):
         label = "Route" if len(links) == 1 else f"Part {k} of {len(links)}"
         lines.append(f"{label}: {link}")
-    lines += ["", "Reply with the stop numbers you inspected and what you found."]
+    if report_link:
+        lines += ["", f"At the end of the day, tell us what happened at each stop: {report_link}"]
+    else:
+        lines += ["", "Reply with the stop numbers you inspected and what you found."]
     return "\n".join(lines), links
 
 
@@ -130,3 +133,11 @@ def whatsapp_link(text, phone=None):
     if digits.startswith("0"):
         digits = "62" + digits[1:]  # Indonesian local format 0812... -> 62812...
     return f"https://wa.me/{digits}?text=" + quote(text)
+
+
+def report_message(team_id, leader, link):
+    """End of day WhatsApp message with the team's report link."""
+    hello = f"Hi {leader}! " if leader else ""
+    return (f"*Dengai: Team {team_id}, end of day*\n{hello}Thank you for today's inspections. "
+            f"Please take 2 minutes to mark each stop (breeding found, no breeding, wrong detection, "
+            f"could not get in, did not get there) and add a short summary:\n{link}")

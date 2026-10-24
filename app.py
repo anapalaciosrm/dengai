@@ -10,6 +10,7 @@ Tabs:
 import json
 import sys
 from datetime import date, datetime
+from urllib.parse import urlparse
 from pathlib import Path
 
 import folium
@@ -23,6 +24,7 @@ import config as C  # noqa: E402
 import navigation as N  # noqa: E402
 import plan_day as D  # noqa: E402
 import route_paths as R  # noqa: E402
+import reports as RP  # noqa: E402
 import teams as T  # noqa: E402
 
 AREA_FILE = Path("data/raw/tallo_area.gpkg")
@@ -252,6 +254,79 @@ def legend(color_by):
 
 # ---------- page ----------
 
+# ---------- end of day report page (opened from a team's WhatsApp link) ----------
+
+SHORT_STATUS = {"breeding": "Breeding found", "clear": "No breeding", "false": "Wrong detection",
+                "cleared": "Cleared by residents", "no_access": "Couldn't get in", "not_reached": "Didn't get there"}
+
+
+def report_page(team_id, plan_id, k):
+    """Mobile form: mark every stop, write a summary, submit."""
+    st.markdown("<style>.block-container{max-width:640px;padding-top:3.5rem}</style>", unsafe_allow_html=True)
+    st.markdown(f"### Dengai · Team {team_id} report")
+    if k != RP.key(plan_id, team_id):
+        st.error("This link is not valid. Ask your coordinator for a new one.")
+        return
+    if str(saved.get("plan_id")) != str(plan_id):
+        st.warning("This link is from an earlier plan. Ask your coordinator for today's link.")
+        return
+    plan = load_csv(OUTPUTS / "plan_optimized.csv")
+    team = plan[plan["team_id"] == team_id].sort_values("visit_order") if plan is not None else None
+    tcfg = next((t for t in saved["teams"] if t["team_id"] == team_id), None)
+    if team is None or tcfg is None or not len(team):
+        st.info("No stops were planned for this team.")
+        return
+    info = sites.set_index("site_id")
+    earlier = RP.load(plan_id, team_id)
+    st.caption(f"{tcfg['puskesmas']} · {len(team)} stops · tap what happened at each one")
+    if earlier:
+        st.success(f"Report received at {earlier['submitted'][-5:]}. You can change it and send again.")
+
+    with st.form("report"):
+        leader = st.text_input("Your name", earlier.get("leader", "") if earlier else
+                               load_contacts().get(str(team_id), {}).get("name", ""))
+        stops = {}
+        for n, row in enumerate(team.itertuples(), start=1):
+            kind = info.at[row.site_id, "site_type"] if row.site_id in info.index else ""
+            when = N.clock(tcfg["leave"], row.arrival_minute)
+            st.markdown(f"**{n}. {row.site_id}** · {kind} · planned {when} · "
+                        f"[map]({N.stop_link(row.lat, row.lon, tcfg['mode'])})")
+            default = (earlier or {}).get("stops", {}).get(row.site_id)
+            stops[row.site_id] = st.pills(f"Stop {n}", list(SHORT_STATUS), format_func=SHORT_STATUS.get,
+                                          default=default, key=f"stop_{row.site_id}",
+                                          label_visibility="collapsed")
+        summary = st.text_area("What happened today?", (earlier or {}).get("summary", ""), height=120,
+                               placeholder="Anything that slowed you down, places to revisit, residents "
+                                           "who helped. Indonesian or English is fine.")
+        sent = st.form_submit_button("Send report", type="primary", use_container_width=True)
+    if sent:
+        missing = [s for s, v in stops.items() if not v]
+        if missing:
+            st.warning(f"{len(missing)} stop(s) have no answer yet. Choose one for each, "
+                       "or 'Didn't get there' if you did not reach it.")
+        else:
+            RP.save(plan_id, team_id, stops, summary, leader)
+            st.success("Thank you! Your report was sent to the coordinator. You can close this page.")
+
+
+q = st.query_params
+if "report" in q:
+    try:
+        report_page(int(q.get("report")), q.get("plan", ""), q.get("k", ""))
+    except ValueError:
+        st.error("This link is not valid.")
+    st.stop()
+
+
+def app_base_url():
+    """Address of this app as the coordinator's browser sees it, without path or query."""
+    try:
+        u = urlparse(st.context.url)
+        return f"{u.scheme}://{u.netloc}"
+    except Exception:
+        return "http://localhost:8501"
+
+
 st.markdown("<style>.block-container{padding-top:2rem;padding-bottom:2rem}</style>", unsafe_allow_html=True)
 st.markdown("## Dengai <span style='font-size:0.9rem;font-weight:400;opacity:0.7'>"
             "daily dengue inspection routes for Tallo, Makassar</span>", unsafe_allow_html=True)
@@ -395,8 +470,17 @@ with tab_plan:
 
         with routes_col:
             st.markdown("#### Team routes")
-            st.caption("Each team gets its stops in order with a free Google Maps link per stop. "
-                       "Add the leader's WhatsApp number once; it is saved on this computer.")
+            st.caption("Each team gets its stops in order with a free Google Maps link per stop, and a "
+                       "link to report at the end of the day. Add the leader's WhatsApp number once; "
+                       "it is saved on this computer.")
+            ss.setdefault("base_url", app_base_url())
+            base = st.text_input("Address teams' phones open for reports", key="base_url",
+                                 help="Use the Network URL Streamlit prints (phones on the same Wi-Fi), "
+                                      "or the address of a deployed app.")
+            if "localhost" in base or "127.0.0.1" in base:
+                st.caption("⚠️ Phones cannot open localhost. Use the Network URL from the terminal, "
+                           "for example http://10.34.185.35:8501.")
+            plan_id = saved.get("plan_id", "default")
             contacts = load_contacts()
             site_info = sites.set_index("site_id")
             for tcfg in saved["teams"]:
@@ -424,7 +508,9 @@ with tab_plan:
                     if name != person.get("name", "") or phone != person.get("phone", ""):
                         contacts[key] = {"name": name, "phone": phone}
                         save_contacts(contacts)
-                    text, links = N.team_message(team_id, team, start_name, (lat, lon), msg_cfg, site_info)
+                    report_url = RP.link(base, plan_id, team_id)
+                    text, links = N.team_message(team_id, team, start_name, (lat, lon), msg_cfg, site_info,
+                                                 report_link=report_url)
                     if name:
                         text = text.replace(f"*Dengai: Team {team_id}*", f"*Dengai: Team {team_id}*\nHi {name}!", 1)
                     x, y, z = st.columns(3)
@@ -434,6 +520,10 @@ with tab_plan:
                     y.link_button("Preview route", links[0], use_container_width=True)
                     z.download_button("Download", text, file_name=f"team_{team_id}.txt",
                                       key=f"dl_{team_id}", use_container_width=True)
+                    r1, r2 = st.columns(2)
+                    r1.link_button("Send end of day link", N.whatsapp_link(
+                        N.report_message(team_id, name, report_url), phone), use_container_width=True)
+                    r2.link_button("Open report form", report_url, use_container_width=True)
                     with st.popover("See message"):
                         st.code(text, language=None)
             first = team_start(saved["teams"][0])
@@ -544,19 +634,56 @@ with tab_details:
 # ===== Tab 3: finish the day =====
 with tab_day:
     st.markdown("### Finish the day")
-    st.caption("Team leaders report what happened: which sites were real, which were false alarms, "
-               "what could not be reached, and anything that slowed them down. Paste WhatsApp replies "
-               "or type them here, in Indonesian or English.")
-    n_teams = len(saved["teams"] or [])
-    notes = {}
-    for i in range(n_teams):
-        notes[str(i + 1)] = st.text_area(f"Team {i + 1}", key=f"debrief_{i + 1}", height=90,
-                                         placeholder="Stops 3 and 7 were AC units, not tires. Gate locked at stop 12. "
-                                                     "Tires took longer than 20 minutes.")
-    general = st.text_area("Anything else from the coordinator", key="debrief_general", height=70)
-    if st.button("Save today's reports", type="primary"):
+    plan_id = saved.get("plan_id", "default")
+    received = RP.load_all(plan_id) if plan_ready else {}
+    team_list = saved["teams"] or []
+    st.caption(f"Reports from the teams' end of day links: {len(received)} of {len(team_list)} received. "
+               "Send the links from each team's card in Today's plan.")
+    if st.button("Check for new reports"):
+        st.rerun()
+
+    if received:
+        counts = RP.tally(received)
+        cols = st.columns(len(SHORT_STATUS))
+        for col, (code, label) in zip(cols, SHORT_STATUS.items()):
+            col.metric(label, counts.get(code, 0))
+        inspected = counts["breeding"] + counts["clear"] + counts["false"] + counts["cleared"]
+        if inspected:
+            st.caption(f"Detections confirmed real: {counts['breeding'] + counts['clear'] + counts['cleared']} "
+                       f"of {inspected} inspected ({counts['false']} wrong detections). "
+                       f"{counts['not_reached'] + counts['no_access']} stops to carry over to tomorrow.")
+
+    plan = load_csv(OUTPUTS / "plan_optimized.csv") if plan_ready else None
+    contacts = load_contacts()
+    for t in team_list:
+        team_id = t["team_id"]
+        r = received.get(team_id)
+        status = f"received {r['submitted'][-5:]}" + (f" from {r['leader']}" if r.get("leader") else "") \
+            if r else "waiting"
+        with st.expander(f"Team {team_id} ({t['puskesmas'].replace('Puskesmas ', '')}): {status}",
+                         expanded=bool(r)):
+            if r:
+                rows = []
+                team = plan[plan["team_id"] == team_id].sort_values("visit_order") if plan is not None else None
+                order = list(team["site_id"]) if team is not None else list(r["stops"])
+                for n, site in enumerate(order, start=1):
+                    rows.append({"Stop": n, "Site": site, "What happened": SHORT_STATUS.get(r["stops"].get(site), "")})
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+                if r.get("summary"):
+                    st.markdown(f"> {r['summary']}")
+            else:
+                person = contacts.get(str(team_id), {})
+                link = RP.link(ss.get("base_url", app_base_url()), plan_id, team_id)
+                st.link_button("Send end of day link on WhatsApp",
+                               N.whatsapp_link(N.report_message(team_id, person.get("name", ""), link),
+                                               person.get("phone")))
+                st.text_area("Or paste the team's WhatsApp reply here", key=f"debrief_{team_id}", height=80)
+
+    general = st.text_area("Notes from the coordinator", key="debrief_general", height=70)
+    if st.button("Save today's debrief", type="primary"):
         DEBRIEF_DIR.mkdir(parents=True, exist_ok=True)
-        record = {"date": date.today().isoformat(), "teams": notes, "coordinator": general,
-                  "plan_settings": saved}
-        (DEBRIEF_DIR / f"{date.today().isoformat()}.json").write_text(json.dumps(record, indent=2))
-        st.success("Saved. The AI agent will turn these into a report and suggested changes (coming next).")
+        record = {"date": date.today().isoformat(), "plan_id": plan_id, "reports": received,
+                  "pasted": {str(t["team_id"]): ss.get(f"debrief_{t['team_id']}", "") for t in team_list},
+                  "coordinator": general, "plan_settings": saved}
+        (DEBRIEF_DIR / f"{date.today().isoformat()}.json").write_text(json.dumps(record, indent=2, ensure_ascii=False))
+        st.success("Saved. Next: the AI agent turns this into a daily report and suggested changes.")
