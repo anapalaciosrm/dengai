@@ -23,6 +23,7 @@ import config as C  # noqa: E402
 import navigation as N  # noqa: E402
 import plan_day as D  # noqa: E402
 import route_paths as R  # noqa: E402
+import teams as T  # noqa: E402
 
 AREA_FILE = Path("data/raw/tallo_area.gpkg")
 SITES_FILE = Path("data/processed/sites_scored.csv")
@@ -114,73 +115,59 @@ boundary = load_layer("boundary")
 health = load_layer("health_centers")
 default_start = load_csv(START_FILE)
 pusk = puskesmas()
-saved = D.load_settings(cfg)                    # settings of the plan currently in outputs/
-plan_ready = all((OUTPUTS / f"plan_{m}.csv").exists() for m in METHOD_LABELS)
+saved = D.load_settings(cfg)                    # inputs and teams of the plan in outputs/
+plan_ready = all((OUTPUTS / f"plan_{m}.csv").exists() for m in METHOD_LABELS) and bool(saved["teams"])
 can_plan = SITES_FILE.exists() and C.MATRIX_FILE.exists()
-
-saved_start = saved.get("start") or (
-    {"name": default_start["name"].iloc[0], "lat": float(default_start["lat"].iloc[0]),
-     "lon": float(default_start["lon"].iloc[0])} if default_start is not None else None)
+points = {p["name"]: p for p in pusk.to_dict("records")}
 
 
-# ---------- team settings kept between reruns ----------
+def team_start(team):
+    """(name, lat, lon) of the puskesmas a team leaves from."""
+    p = points.get(team["puskesmas"]) or next(x for x in saved["puskesmas"] if x["name"] == team["puskesmas"])
+    return p["name"], float(p["lat"]), float(p["lon"])
+
+
+# ---------- puskesmas inputs kept between reruns ----------
 
 ss = st.session_state
-if "teams" not in ss:
-    ss.teams = [dict(t) for t in saved["teams"]]
-if "pending_start" in ss:               # a puskesmas clicked on the map last run
-    ss.start_name = ss.pop("pending_start")
-if "start_name" not in ss:
-    ss.start_name = saved_start["name"] if saved_start else pusk["name"].iloc[0]
+FIELDS = {  # key: (label, default, step)
+    "budget_idr": ("Budget for today (Rp, 0 = no limit)", 0, 50000),
+    "paid": ("Paid workers", 2, 1),
+    "volunteers": ("Volunteers", 2, 1),
+    "motorbikes": ("Motorbikes", 0, 1),
+    "bicycles": ("Bicycles", 0, 1),
+}
+if "pusk_selected" not in ss:
+    ss.pusk_selected = [p["name"] for p in saved["puskesmas"] if p["name"] in points] or [pusk["name"].iloc[0]]
+    for p in saved["puskesmas"]:
+        for f in FIELDS:
+            ss[f"{p['name']}|{f}"] = int(p.get(f, FIELDS[f][1]))
+        ss[f"{p['name']}|hours"] = float(p.get("hours", 6))
+        ss[f"{p['name']}|leave"] = datetime.strptime(p.get("leave", "08:00"), "%H:%M").time()
+if "pending_add" in ss:                 # a puskesmas clicked on the map last run
+    name = ss.pop("pending_add")
+    if name not in ss.pusk_selected:
+        ss.pusk_selected = ss.pusk_selected + [name]
 
 
-def team_keys(i):
-    return f"t{i}_mode", f"t{i}_hours", f"t{i}_leave"
-
-
-def current_teams():
-    """Team settings as shown in the widgets right now."""
-    teams = []
-    for i, t in enumerate(ss.teams):
-        km, kh, kl = team_keys(i)
-        leave = ss.get(kl)
-        teams.append({"mode": ss.get(km, t["mode"]), "hours": float(ss.get(kh, t["hours"])),
-                      "leave": leave.strftime("%H:%M") if leave is not None else t["leave"]})
-    return teams
-
-
-def reset_team_widgets():
-    for key in [k for k in ss.keys() if isinstance(k, str) and k.startswith("t") and "_" in k
-                and k.split("_")[0][1:].isdigit()]:
-        del ss[key]
-
-
-def add_team():
-    teams = current_teams()
-    teams.append(dict(teams[-1]) if teams else {"mode": "walk", "hours": 6.0, "leave": "08:00"})
-    ss.teams = teams
-    reset_team_widgets()
-
-
-def remove_team(i):
-    teams = current_teams()
-    if len(teams) > 1:
-        teams.pop(i)
-    ss.teams = teams
-    reset_team_widgets()
-
-
-def start_point(name):
-    row = pusk[pusk["name"] == name]
-    if len(row):
-        r = row.iloc[0]
-        return {"name": r["name"], "lat": float(r["lat"]), "lon": float(r["lon"])}
-    return saved_start
+def current_puskesmas():
+    """The coordinator's inputs right now, one dict per selected puskesmas."""
+    out = []
+    for name in ss.pusk_selected:
+        p = points[name]
+        item = {"name": name, "lat": float(p["lat"]), "lon": float(p["lon"])}
+        for f, (_, default, _) in FIELDS.items():
+            item[f] = int(ss.get(f"{name}|{f}", default))
+        item["hours"] = float(ss.get(f"{name}|hours", 6.0))
+        leave = ss.get(f"{name}|leave")
+        item["leave"] = leave.strftime("%H:%M") if leave is not None else "08:00"
+        out.append(item)
+    return out
 
 
 # ---------- map ----------
 
-def build_map(method=None, show_routes=True, start=None, color_by="priority"):
+def build_map(method=None, show_routes=True, starts=(), color_by="priority"):
     """Folium map: sites as dots, optional routes of one plan, puskesmas, and the start."""
     m = folium.Map(location=[sites["lat"].mean(), sites["lon"].mean()], zoom_start=15,
                    tiles="OpenStreetMap")
@@ -196,9 +183,9 @@ def build_map(method=None, show_routes=True, start=None, color_by="priority"):
         for team_id, team in plan.groupby("team_id"):
             team = team.sort_values("visit_order")
             path = street_paths.get(str(int(team_id)))
-            if not path and saved_start:
-                path = [[saved_start["lat"], saved_start["lon"]]] + team[["lat", "lon"]].values.tolist()
-                path += path[:1]
+            if not path and int(team_id) <= len(saved["teams"]):
+                _, lat, lon = team_start(saved["teams"][int(team_id) - 1])
+                path = [[lat, lon]] + team[["lat", "lon"]].values.tolist() + [[lat, lon]]
             folium.PolyLine(path, color=TEAM_COLORS[(team_id - 1) % len(TEAM_COLORS)], weight=4,
                             opacity=0.85, tooltip=f"Team {team_id}: {len(team)} sites").add_to(m)
 
@@ -224,7 +211,7 @@ def build_map(method=None, show_routes=True, start=None, color_by="priority"):
         ).add_to(m)
 
     for _, p in pusk.iterrows():
-        is_start = start is not None and p["name"] == start["name"]
+        is_start = p["name"] in starts
         folium.Marker([p["lat"], p["lon"]], tooltip=f"Puskesmas: {p['name']}",
                       icon=folium.Icon(color="green" if is_start else "blue",
                                        icon="home" if is_start else "plus")).add_to(m)
@@ -242,13 +229,14 @@ def legend(color_by):
                     f"background:{color};margin-right:6px;vertical-align:middle'></span>{label}<br>")
     html.append("<span style='display:inline-block;width:12px;height:12px;border-radius:50%;"
                 "border:2px solid #000;margin-right:6px;vertical-align:middle'></span>In today's routes<br>")
-    html.append("<br><b>Places</b><br>🟢 Start<br>🔵 Puskesmas<br>")
+    html.append("<br><b>Places</b><br>🟢 Taking part today<br>🔵 Other puskesmas<br>")
     if plan_ready:
         html.append("<br><b>Teams</b><br>")
-        for i, _ in enumerate(saved["teams"]):
+        for i, t in enumerate(saved["teams"]):
+            short = t["puskesmas"].replace("Puskesmas Pembantu", "").replace("Puskesmas", "").strip()
             html.append(f"<span style='display:inline-block;width:18px;height:4px;"
                         f"background:{TEAM_COLORS[i % len(TEAM_COLORS)]};margin-right:6px;"
-                        f"vertical-align:middle'></span>Team {i + 1}<br>")
+                        f"vertical-align:middle'></span>Team {i + 1} ({short})<br>")
     html.append("</div>")
     return "".join(html)
 
@@ -263,62 +251,68 @@ tab_plan, tab_details, tab_day = st.tabs(["Today's plan", "Weights and compariso
 
 # ===== Tab 1: the coordinator's daily plan =====
 with tab_plan:
-    left, center, right = st.columns([0.8, 4, 1.8], gap="medium")
+    left, center, right = st.columns([0.9, 4, 1.9], gap="medium")
 
     with right:
-        st.markdown("#### Start from")
-        st.selectbox("Puskesmas", list(pusk["name"]), key="start_name",
-                     help="Or click a puskesmas (blue cross) on the map.")
-        st.markdown("#### Teams")
-        for i, team in enumerate(ss.teams):
-            km, kh, kl = team_keys(i)
-            ss.setdefault(km, team["mode"])
-            ss.setdefault(kh, float(team["hours"]))
-            ss.setdefault(kl, datetime.strptime(team["leave"], "%H:%M").time())
-            color = TEAM_COLORS[i % len(TEAM_COLORS)]
-            with st.expander(f"Team {i + 1}: {mode_label(ss[km]).lower()}, {ss[kh]:g} h, {ss[kl].strftime('%H:%M')}"):
-                st.markdown(f"<div style='height:4px;background:{color};margin-bottom:8px'></div>",
-                            unsafe_allow_html=True)
-                st.selectbox("Travel by", list(D.MODES), key=km, format_func=mode_label)
-                st.slider("Hours in the field", 1.0, 10.0, step=0.5, key=kh)
-                st.time_input("Leave at", key=kl, step=900)
-                st.button("Remove team", key=f"rm{i}", on_click=remove_team, args=(i,),
-                          disabled=len(ss.teams) == 1)
-        st.button("Add team", on_click=add_team, use_container_width=True)
+        st.markdown("#### Puskesmas taking part")
+        st.multiselect("Puskesmas", list(pusk["name"]), key="pusk_selected", label_visibility="collapsed",
+                       help="Or click a puskesmas on the map to add it.")
+        st.caption("Enter what each one has today. Dengai forms the teams.")
+        draft = current_puskesmas()
+        draft_teams, draft_notes = T.form_teams(draft, cfg) if draft else ([], {})
+        for p in draft:
+            name = p["name"]
+            with st.expander(f"{name}: {T.describe(draft_teams, name)}", expanded=len(draft) == 1):
+                for f, (label, default, step) in FIELDS.items():
+                    ss.setdefault(f"{name}|{f}", default)
+                    st.number_input(label, min_value=0, step=step, key=f"{name}|{f}")
+                ss.setdefault(f"{name}|hours", 6.0)
+                ss.setdefault(f"{name}|leave", datetime.strptime("08:00", "%H:%M").time())
+                st.slider("Hours in the field", 1.0, 10.0, step=0.5, key=f"{name}|hours")
+                st.time_input("Leave at", key=f"{name}|leave", step=900)
+                for note in draft_notes.get(name, []):
+                    st.caption(note)
         with st.expander("Advanced"):
             seconds = st.slider("Optimizer search time (seconds)", 5, 60, int(saved["solver_seconds"]), 5,
                                 help="Longer can find slightly better routes.")
+            st.caption(f"Teams of {cfg.get('team_size', 2):g}; "
+                       + ("each led by a paid worker. " if cfg.get("team_needs_paid_lead", 1) else "")
+                       + "Change in config/assumptions.csv.")
 
-    teams_now = current_teams()
-    start_now = start_point(ss.start_name)
-    stale = plan_ready and (teams_now != saved["teams"] or (saved_start or {}).get("name") != ss.start_name)
+    def inputs(plist):
+        """The parts of the inputs that change a plan (ignores tiny coordinate differences)."""
+        return [(p["name"], *(int(p.get(f, 0) or 0) for f in FIELDS), float(p.get("hours", 6)),
+                 str(p.get("leave", "08:00"))) for p in plist]
+
+    stale = plan_ready and inputs(draft) != inputs(saved["puskesmas"])
 
     with left:
         color_by = st.radio("Color dots by", ["priority", "site type"], label_visibility="collapsed")
         st.markdown(legend(color_by), unsafe_allow_html=True)
 
     with center:
-        show_routes = plan_ready and not stale
-        fmap = build_map("optimized", show_routes, start_now, color_by)
+        fmap = build_map("optimized", plan_ready and not stale, ss.pusk_selected, color_by)
         out = st_folium(fmap, height=520, use_container_width=True, key="plan_map",
                         returned_objects=["last_object_clicked_tooltip"])
         clicked = (out or {}).get("last_object_clicked_tooltip") or ""
-        if clicked.startswith("Puskesmas: ") and clicked[11:] != ss.start_name:
-            ss.pending_start = clicked[11:]
+        if clicked.startswith("Puskesmas: ") and clicked[11:] not in ss.pusk_selected:
+            ss.pending_add = clicked[11:]
             st.rerun()
 
-        generate = st.button("Generate team routes", type="primary", disabled=not can_plan,
-                             use_container_width=True)
+        generate = st.button("Generate team routes", type="primary", use_container_width=True,
+                             disabled=not (can_plan and draft_teams))
         if not can_plan:
             st.info("Run python run_pipeline.py once to prepare sites and travel times.")
+        elif not draft_teams:
+            st.info("Add people to a puskesmas to form at least one team.")
         elif stale:
-            st.warning("Settings changed. Click Generate team routes to update the plan.")
+            st.warning("Inputs changed. Click Generate team routes to update the plan.")
         elif not plan_ready:
-            st.info("Choose the puskesmas and teams, then click Generate team routes.")
+            st.info("Choose the puskesmas and their resources, then click Generate team routes.")
 
     if generate:
-        with st.spinner(f"Planning routes for {len(teams_now)} teams (about {seconds + 5} seconds)..."):
-            D.plan_day(teams_now, int(seconds), start=start_now, net=street_network())
+        with st.spinner(f"Planning routes for {len(draft_teams)} teams (about {seconds + 5} seconds)..."):
+            D.plan_day(draft, int(seconds), net=street_network())
         st.cache_data.clear()
         st.rerun()
 
@@ -341,24 +335,36 @@ with tab_plan:
         routes_col, cost_col = st.columns([1, 1], gap="large")
 
         with cost_col:
-            st.markdown("#### Cost table")
+            st.markdown("#### Budget by puskesmas")
             if costs is not None:
+                body = costs[costs["Team"] != "Total"]
+                rows = []
+                for p in saved["puskesmas"]:
+                    spent = body.loc[body["Puskesmas"] == p["name"], "Total (IDR)"].sum()
+                    budget = p.get("budget_idr", 0)
+                    rows.append({"Puskesmas": p["name"], "Teams": T.describe(saved["teams"], p["name"]),
+                                 "Budget": idr(budget) if budget else "No limit", "Planned cost": idr(spent),
+                                 "Left": idr(budget - spent) if budget else ""})
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+                st.markdown("#### Cost by team")
                 show = costs.copy()
                 show["Travel"] = show["Travel"].fillna("").map(lambda k: mode_label(k) if k else "")
+                show["Puskesmas"] = show["Puskesmas"].fillna("").str.replace("Puskesmas ", "", regex=False)
                 money = [c for c in show.columns if "(IDR)" in c]
                 show[money] = show[money].apply(lambda col: col.map(lambda v: f"{v:,.0f}".replace(",", ".")))
-                show = show.drop(columns=["Total (USD)"])
-                st.dataframe(show, hide_index=True, width="stretch")
-                st.caption(f"Labor: {cfg.get('team_size', 2):g} people per team × hours × "
-                           f"{idr(cfg.get('wage_idr_per_hour', 0))} per hour. Fuel: street km × price per km "
-                           "(walking and bicycles cost nothing). Larvicide: expected real sites × price. "
-                           "Prices are placeholders in config/assumptions.csv until sourced.")
+                st.dataframe(show.drop(columns=["Total (USD)"]), hide_index=True, width="stretch")
+                st.caption(f"Labor: paid workers × hours × {idr(cfg.get('wage_idr_per_hour', 0))} per hour"
+                           + (f", volunteers {idr(cfg.get('volunteer_stipend_idr_per_day', 0))} per day"
+                              if cfg.get("volunteer_stipend_idr_per_day") else ", volunteers unpaid")
+                           + ". Fuel: street km × price per km. Larvicide: expected real sites × price. "
+                             "Prices are placeholders in config/assumptions.csv until sourced.")
             access = load_csv(Path("data/processed/site_access.csv"))
             if access is not None and "hard_to_reach" in access and access["hard_to_reach"].any():
                 hard = access[access["hard_to_reach"]].merge(sites, left_on="id", right_on="site_id")
                 with st.expander(f"{len(hard)} site(s) need a special visit"):
                     st.caption("Far from any mapped street or path (fenced, on a roof, across water). "
-                               "Left out of walking routes; plan them with the owner or a vehicle.")
+                               "Left out of routes; plan them with the owner or a vehicle.")
                     st.dataframe(hard[["site_id", "site_type", "priority", "meters_to_path"]]
                                  .rename(columns={"meters_to_path": "Meters from path"}), hide_index=True)
 
@@ -368,18 +374,24 @@ with tab_plan:
                        "Add the leader's WhatsApp number once; it is saved on this computer.")
             contacts = load_contacts()
             site_info = sites.set_index("site_id")
-            start_name, start_latlon = saved_start["name"], (saved_start["lat"], saved_start["lon"])
-            for team_id, team in plan.groupby("team_id"):
-                key = str(int(team_id))
-                tcfg = saved["teams"][int(team_id) - 1]
+            for tcfg in saved["teams"]:
+                team_id = tcfg["team_id"]
+                team = plan[plan["team_id"] == team_id]
+                key = str(team_id)
+                start_name, lat, lon = team_start(tcfg)
                 msg_cfg = dict(cfg, travel_mode=tcfg["mode"], day_start=tcfg["leave"])
                 person = contacts.get(key, {})
-                color = TEAM_COLORS[(int(team_id) - 1) % len(TEAM_COLORS)]
+                color = TEAM_COLORS[(team_id - 1) % len(TEAM_COLORS)]
+                crew = f"{tcfg['paid']} paid" + (f" + {tcfg['volunteers']} volunteer{'s' if tcfg['volunteers'] > 1 else ''}"
+                                                  if tcfg["volunteers"] else "")
                 title = f"Team {team_id}" + (f" ({person['name']})" if person.get("name") else "")
-                with st.expander(f"{title}: {len(team)} sites, {mode_label(tcfg['mode']).lower()}, "
-                                 f"leaves {tcfg['leave']}"):
-                    st.markdown(f"<div style='height:4px;background:{color};margin-bottom:8px'></div>",
+                with st.expander(f"{title}: {len(team)} sites, {mode_label(tcfg['mode']).lower()}, {crew}"):
+                    st.markdown(f"<div style='height:4px;background:{color};margin-bottom:8px'></div>"
+                                f"<small>From {start_name}, leaves {tcfg['leave']}, {tcfg['hours']:g} h</small>",
                                 unsafe_allow_html=True)
+                    if not len(team):
+                        st.caption("No sites fit this team's time or budget today.")
+                        continue
                     a, b = st.columns(2)
                     name = a.text_input("Team leader", person.get("name", ""), key=f"name_{key}")
                     phone = b.text_input("WhatsApp number", person.get("phone", ""), key=f"phone_{key}",
@@ -387,7 +399,7 @@ with tab_plan:
                     if name != person.get("name", "") or phone != person.get("phone", ""):
                         contacts[key] = {"name": name, "phone": phone}
                         save_contacts(contacts)
-                    text, links = N.team_message(team_id, team, start_name, start_latlon, msg_cfg, site_info)
+                    text, links = N.team_message(team_id, team, start_name, (lat, lon), msg_cfg, site_info)
                     if name:
                         text = text.replace(f"*Dengai: Team {team_id}*", f"*Dengai: Team {team_id}*\nHi {name}!", 1)
                     x, y, z = st.columns(3)
@@ -399,7 +411,8 @@ with tab_plan:
                                       key=f"dl_{team_id}", use_container_width=True)
                     with st.popover("See message"):
                         st.code(text, language=None)
-            kml = N.plan_kml(plan, start_name, start_latlon, site_info,
+            first = team_start(saved["teams"][0])
+            kml = N.plan_kml(plan, first[0], (first[1], first[2]), site_info,
                              load_json(OUTPUTS / "paths_optimized.json"), cfg, title="Dengai: today's routes")
             st.download_button("Download all routes for Google My Maps (.kml)", kml,
                                file_name="dengai_routes.kml", mime="application/vnd.google-earth.kml+xml",
@@ -428,7 +441,7 @@ with tab_details:
 
         method = st.radio("Show routes on the map for", list(METHOD_LABELS), format_func=METHOD_LABELS.get,
                           horizontal=True, index=2)
-        st_folium(build_map(method, True, saved_start), height=420, use_container_width=True, key="compare_map",
+        st_folium(build_map(method, True, [p["name"] for p in saved["puskesmas"]]), height=420, use_container_width=True, key="compare_map",
                   returned_objects=[])
 
     st.markdown("### How each site is prioritized")
@@ -509,7 +522,7 @@ with tab_day:
     st.caption("Team leaders report what happened: which sites were real, which were false alarms, "
                "what could not be reached, and anything that slowed them down. Paste WhatsApp replies "
                "or type them here, in Indonesian or English.")
-    n_teams = len(saved["teams"]) if plan_ready else len(ss.teams)
+    n_teams = len(saved["teams"] or [])
     notes = {}
     for i in range(n_teams):
         notes[str(i + 1)] = st.text_area(f"Team {i + 1}", key=f"debrief_{i + 1}", height=90,

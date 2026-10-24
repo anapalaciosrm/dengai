@@ -57,12 +57,21 @@ def snap(net, lat, lon):
 
 
 def paths_for_plan(plan, start, net):
-    """{team_id: [[lat, lon], ...]} following the streets, START -> stops -> START."""
-    start_node = snap(net, start["lat"], start["lon"])
+    """{team_id: [[lat, lon], ...]} following the streets, start -> stops -> start.
+
+    start: one point {"lat", "lon"} for every team, or {start_id: point} when teams leave
+    from different puskesmas (the plan's start_id column says which).
+    """
+    points = start if "lat" not in start else None
+    nodes = {}
     paths = {}
     for team_id, team in plan.groupby("team_id"):
         team = team.sort_values("visit_order")
-        stops = [(start["lat"], start["lon"], start_node)]
+        here = points[team["start_id"].iloc[0]] if points is not None else start
+        key = (here["lat"], here["lon"])
+        if key not in nodes:
+            nodes[key] = snap(net, here["lat"], here["lon"])
+        stops = [(here["lat"], here["lon"], nodes[key])]
         stops += [(r.lat, r.lon, snap(net, r.lat, r.lon)) for r in team.itertuples()]
         stops += [stops[0]]  # back to the puskesmas
 

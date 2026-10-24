@@ -38,3 +38,5 @@ fuel_idr_per_km_moto,250,IDR per km,placeholder,Motorbike fuel per km (fuel pric
 fuel_idr_per_km_car,850,IDR per km,placeholder,Car fuel per km; Lara to source
 larvicide_idr_per_site,5000,IDR per site,placeholder,Larvicide used per real breeding site treated; Lara to source
 idr_per_usd,16000,IDR per USD,placeholder,Exchange rate for the USD column; Lara to update
+volunteer_stipend_idr_per_day,0,IDR per day,placeholder,Transport or meal allowance per volunteer; 0 if unpaid; team to source
+team_needs_paid_lead,1,yes or no,design choice,1 = every team has a paid worker as lead (volunteers join them); 0 = volunteer only teams allowed

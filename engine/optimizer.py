@@ -41,27 +41,40 @@ TIME_SCALE = 10         # minutes -> tenths of a minute (keeps 0.1 minute precis
 PRIORITY_SCALE = 100_000  # priority 1.0 -> penalty 100,000, far above any day's travel
 
 
-def build_model(sites, travel, n_teams, day_minutes):
-    """Set up the OR-Tools routing model. Node 0 is START, nodes 1..n are sites.
+MONEY_SCALE = 0.1  # rupiah -> tens of rupiah for the budget dimension
+
+
+def build_model(sites, travel, n_teams, day_minutes, starts=None, costs=None, budgets=None):
+    """Set up the OR-Tools routing model. The first nodes are start points, then the sites.
 
     travel and day_minutes: one for all teams, or a list with one per team, so teams
     can travel differently (walk, bike, motorbike) and work different hours.
+    starts: start (and end) node id per team, default "START" for all (teams can leave
+    from different puskesmas). costs and budgets (optional): per team table of money spent
+    per move (fuel, larvicide) and the money the team may spend; added as a "Money"
+    dimension so no team goes over its budget.
     """
-    ids = ["START"] + list(sites.index)
     travels, days = P.per_team(travel, n_teams), P.per_team(day_minutes, n_teams)
-    inspect_int = [0] + [int(round(sites.at[s, "inspect_min"] * TIME_SCALE)) for s in sites.index]
+    starts = P.per_team(starts or "START", n_teams)
+    depots = list(dict.fromkeys(starts))
+    ids = depots + list(sites.index)
+    n_depots = len(depots)
+    inspect_int = [0] * n_depots + [int(round(sites.at[s, "inspect_min"] * TIME_SCALE)) for s in sites.index]
 
     # The manager translates between our node numbers and OR-Tools' internal indexes.
-    manager = pywrapcp.RoutingIndexManager(len(ids), n_teams, 0)  # 0 = every team starts and ends at START
+    depot_of = [depots.index(s) for s in starts]
+    manager = pywrapcp.RoutingIndexManager(len(ids), n_teams, depot_of, depot_of)
     routing = pywrapcp.RoutingModel(manager)
 
-    time_callbacks = []
-    cache = {}  # teams with the same travel table share callbacks
+    def int_table(table, scale):
+        return [[int(round(table.at[a, b] * scale)) for b in ids] for a in ids]
+
+    time_callbacks, money_callbacks = [], []
+    cache = {}  # teams with the same tables share callbacks
     for team in range(n_teams):
         tr = travels[team]
         if id(tr) not in cache:
-            # Whole number table the solver reads from.
-            travel_int = [[int(round(tr.at[a, b] * TIME_SCALE)) for b in ids] for a in ids]
+            travel_int = int_table(tr, TIME_SCALE)
 
             # Cost of each move = travel time. This is the "travel" part of the objective.
             def travel_cost(from_index, to_index, t=travel_int):
@@ -78,6 +91,17 @@ def build_model(sites, travel, n_teams, day_minutes):
         routing.SetArcCostEvaluatorOfVehicle(cost_cb, team)
         time_callbacks.append(time_cb)
 
+        if costs is not None:
+            money = costs[team]
+            if ("money", id(money)) not in cache:
+                money_int = int_table(money, MONEY_SCALE)
+
+                def money_used(from_index, to_index, m=money_int):
+                    return m[manager.IndexToNode(from_index)][manager.IndexToNode(to_index)]
+
+                cache[("money", id(money))] = routing.RegisterTransitCallback(money_used)
+            money_callbacks.append(cache[("money", id(money))])
+
     routing.AddDimensionWithVehicleTransitAndCapacity(
         time_callbacks,
         0,                                              # no waiting time allowed
@@ -85,13 +109,16 @@ def build_model(sites, travel, n_teams, day_minutes):
         True,                                           # every team's clock starts at 0
         "Time",
     )
+    if costs is not None and budgets is not None:
+        routing.AddDimensionWithVehicleTransitAndCapacity(
+            money_callbacks, 0, [max(int(b * MONEY_SCALE), 0) for b in budgets], True, "Money")
 
     # Every site is optional. Skipping it costs its priority (scaled).
-    for node, site_id in enumerate(sites.index, start=1):
+    for node, site_id in enumerate(sites.index, start=n_depots):
         penalty = int(round(sites.at[site_id, "priority"] * PRIORITY_SCALE))
         routing.AddDisjunction([manager.NodeToIndex(node)], penalty)
 
-    return manager, routing, ids
+    return manager, routing, ids, n_depots
 
 
 def solve(manager, routing, seconds):
@@ -103,33 +130,35 @@ def solve(manager, routing, seconds):
     return routing.SolveWithParameters(params)
 
 
-def read_routes(manager, routing, solution, ids, n_teams):
+def read_routes(manager, routing, solution, ids, n_teams, n_depots=1, starts=None):
     """Turn the solution into team stop lists: [(site_id, arrival minute), ...] per team."""
     time_dim = routing.GetDimensionOrDie("Time")
+    starts = P.per_team(starts or "START", n_teams)
     teams = []
     for team in range(n_teams):
         stops = []
         index = routing.Start(team)
         while not routing.IsEnd(index):
             node = manager.IndexToNode(index)
-            if node != 0:
+            if node >= n_depots:
                 arrival = solution.Value(time_dim.CumulVar(index)) / TIME_SCALE
                 stops.append((ids[node], arrival))
             index = solution.Value(routing.NextVar(index))
-        teams.append({"stops": stops})
+        teams.append({"stops": stops, "start": starts[team]})
     return teams
 
 
-def optimized_plan(sites, travel, n_teams, day_minutes, seconds):
-    """Build, solve, and return the optimized plan table. Used here and by evaluate.py."""
-    manager, routing, ids = build_model(sites, travel, n_teams, day_minutes)
+def optimized_plan(sites, travel, n_teams, day_minutes, seconds, starts=None, costs=None, budgets=None):
+    """Build, solve, and return the optimized plan table. Used here, plan_day.py, evaluate.py."""
+    manager, routing, ids, n_depots = build_model(sites, travel, n_teams, day_minutes, starts, costs, budgets)
     solution = solve(manager, routing, seconds)
     if solution is None:
         # Never leave the demo without a plan.
         print("Solver found no plan; using the nearest site baseline instead.")
         return P.greedy_plan(sites, travel, n_teams, day_minutes,
-                             lambda cur, feas, tr: min(feas, key=lambda s: tr.at[cur, s]))
-    teams = read_routes(manager, routing, solution, ids, n_teams)
+                             lambda cur, feas, tr: min(feas, key=lambda s: tr.at[cur, s]),
+                             starts, costs, budgets)
+    teams = read_routes(manager, routing, solution, ids, n_teams, n_depots, starts)
     return P.to_table(teams, sites)
 
 

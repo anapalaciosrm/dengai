@@ -11,9 +11,7 @@ STEPS = [
     "engine/enrich_gis.py",
     "engine/scoring.py",
     "engine/travel_matrix.py",
-    "engine/baseline.py",
-    "engine/optimizer.py",
-    "engine/route_paths.py",
+    "engine/plan_day.py",      # baselines + optimizer + costs + street paths, default day
     "engine/evaluate.py",
 ]
 

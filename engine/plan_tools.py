@@ -38,20 +38,31 @@ def per_team(value, n_teams):
     return list(value) if isinstance(value, (list, tuple)) else [value] * n_teams
 
 
-def greedy_plan(sites, travel, n_teams, day_minutes, choose):
+def greedy_plan(sites, travel, n_teams, day_minutes, choose, starts=None, costs=None, budgets=None):
     """Build a plan where teams take turns picking their next site with `choose`.
 
     travel and day_minutes: one for all teams, or a list with one per team
     (teams can travel differently and work different hours).
+    starts: start (and end) node id per team, default "START" (teams can leave from
+    different puskesmas). costs and budgets (optional): per team table of the money spent
+    moving from one node to the next (fuel, larvicide) and the money the team may spend.
     choose(current_location, feasible_site_ids) or choose(current, feasible, team_travel)
-    returns one site id. A site is feasible if the team can get there, inspect it, and
-    still get back to START before its day ends.
+    returns one site id. A site is feasible if the team can get there, inspect it, get back
+    before its day ends, and stay within its budget.
     """
     travels, days = per_team(travel, n_teams), per_team(day_minutes, n_teams)
+    starts = per_team(starts or "START", n_teams)
     takes_travel = choose.__code__.co_argcount >= 3
     unvisited = set(sites.index)
-    teams = [{"at": "START", "clock": 0.0, "stops": []} for _ in range(n_teams)]
+    teams = [{"at": starts[t], "clock": 0.0, "spent": 0.0, "stops": [], "start": starts[t]}
+             for t in range(n_teams)]
     active = list(range(n_teams))
+
+    def affordable(t, team, s):
+        if costs is None or budgets is None:
+            return True
+        cost = costs[t]
+        return team["spent"] + cost.at[team["at"], s] + cost.at[s, team["start"]] <= budgets[t]
 
     while active and unvisited:
         for t in list(active):
@@ -59,13 +70,15 @@ def greedy_plan(sites, travel, n_teams, day_minutes, choose):
             feasible = [
                 s for s in unvisited
                 if team["clock"] + tr.at[team["at"], s] + sites.at[s, "inspect_min"]
-                + tr.at[s, "START"] <= days[t]
+                + tr.at[s, team["start"]] <= days[t] and affordable(t, team, s)
             ]
             if not feasible:
                 active.remove(t)
                 continue
             nxt = choose(team["at"], feasible, tr) if takes_travel else choose(team["at"], feasible)
             arrival = team["clock"] + tr.at[team["at"], nxt]
+            if costs is not None:
+                team["spent"] += costs[t].at[team["at"], nxt]
             team["stops"].append((nxt, arrival))
             team["clock"] = arrival + sites.at[nxt, "inspect_min"]
             team["at"] = nxt
@@ -75,7 +88,7 @@ def greedy_plan(sites, travel, n_teams, day_minutes, choose):
 
 
 def to_table(teams, sites):
-    """Turn team stop lists into the standard plan table."""
+    """Turn team stop lists into the standard plan table (one row per visit)."""
     rows = []
     for t, team in enumerate(teams, start=1):
         for order, (site_id, arrival) in enumerate(team["stops"], start=1):
@@ -87,8 +100,17 @@ def to_table(teams, sites):
                 "lon": sites.at[site_id, "lon"],
                 "arrival_minute": round(arrival, 1),
                 "priority": sites.at[site_id, "priority"],
+                "start_id": team.get("start", "START"),
             })
-    return pd.DataFrame(rows)
+    cols = ["team_id", "visit_order", "site_id", "lat", "lon", "arrival_minute", "priority", "start_id"]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def team_route(team):
+    """[start, site, site, ..., start] for one team's rows of a plan table."""
+    team = team.sort_values("visit_order")
+    start = team["start_id"].iloc[0] if "start_id" in team and len(team) else "START"
+    return [start] + list(team["site_id"]) + [start]
 
 
 def summarize(method, plan, sites, travel):
@@ -97,7 +119,7 @@ def summarize(method, plan, sites, travel):
     travel_total = 0.0
     for team_id, team in plan.groupby("team_id"):
         tr = travel[int(team_id) - 1] if isinstance(travel, (list, tuple)) else travel
-        path = ["START"] + list(team.sort_values("visit_order")["site_id"]) + ["START"]
+        path = team_route(team)
         travel_total += sum(tr.at[a, b] for a, b in zip(path[:-1], path[1:]))
 
     summary = {
