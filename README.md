@@ -5,7 +5,7 @@ Stanford Cleantech Hackathon, Track 2 (Climate and Health).
 
 AI finds the breeding sites. Dengai plans the response: which sites each team visits, in what order, within their working hours.
 
-Team Members: Ana Palacios and Lara Rozanski
+Team Members: Ana Palacios, Lara Rozanski and Alied Monica Camana Ttito  
 
 ## Read first
 
@@ -38,8 +38,8 @@ streamlit run app.py
 3. `engine/scoring.py` computes the priority score
 4. `engine/travel_matrix.py` picks the start puskesmas and computes walking minutes on Tallo's streets
 5. `engine/baseline.py` plans routes with two baselines: nearest site next, highest priority next
-6. `engine/optimizer.py` plans routes with OR-Tools, team orienteering problem (tomorrow)
-7. `engine/evaluate.py` compares plans and runs the Monte Carlo robustness test (tomorrow)
+6. `engine/optimizer.py` plans routes with OR-Tools, team orienteering problem
+7. `engine/evaluate.py` compares plans and runs the Monte Carlo robustness test
 8. `app.py` is the Streamlit dashboard: map, routes, and comparison table
 
 Shared code: `engine/config.py` (paths and assumptions) and `engine/plan_tools.py` (building and measuring plans).
