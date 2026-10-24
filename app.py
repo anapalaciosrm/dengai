@@ -297,8 +297,8 @@ if robust_file.exists() or sens_file.exists():
         st.dataframe(show, hide_index=True, width="stretch")
         opt = r[r["method"] == "optimized"]
         if "beats_nearest_pct" in opt:
-            st.caption("Dengai beats both baselines in "
-                       f"{opt['beats_nearest_pct'].min():.0f}% and {opt['beats_priority_pct'].min():.0f}% "
+            st.caption(f"Dengai beats nearest next in {opt['beats_nearest_pct'].min():.0f}% "
+                       f"and highest priority next in {opt['beats_priority_pct'].min():.0f}% "
                        "of simulated realities.")
     if sens_file.exists():
         s = pd.read_csv(sens_file)
