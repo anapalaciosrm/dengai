@@ -1,7 +1,7 @@
 """Turn each puskesmas's people, vehicles, and budget into field teams.
 
 The coordinator enters, for every puskesmas taking part today:
-    budget_idr   money for the day (0 = no limit)
+    budget_idr   money for the day in rupiah (0 = no limit); the app enters it in US$
     paid         paid workers available
     volunteers   volunteers available (for example jumantik larva monitors)
     motorbikes, bicycles
@@ -81,8 +81,8 @@ def form_teams(puskesmas, cfg):
             for t in group:
                 t["budget_idr"] = left / len(group) if group else 0
             if group:
-                amount = f"{left:,.0f}".replace(",", ".")
-                msgs.append(f"After labor, Rp {amount} is left for fuel and larvicide.")
+                usd = left / cfg.get("idr_per_usd", 16000)
+                msgs.append(f"After labor, US$ {usd:,.0f} is left for fuel and larvicide.")
         else:
             for t in group:
                 t["budget_idr"] = None

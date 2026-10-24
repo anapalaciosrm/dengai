@@ -93,8 +93,10 @@ def save_contacts(contacts):
     CONTACTS_FILE.write_text(json.dumps(contacts, indent=2))
 
 
-def idr(x):
-    return f"Rp {x:,.0f}".replace(",", ".")
+def usd(idr_amount):
+    """Rupiah (the engine's unit) shown as US dollars, using idr_per_usd from assumptions.csv."""
+    dollars = float(idr_amount) / RATE
+    return f"US$ {dollars:,.2f}" if abs(dollars) < 100 else f"US$ {dollars:,.0f}"
 
 
 def mode_label(key):
@@ -111,6 +113,7 @@ if sites is None:
     st.stop()
 
 cfg = C.load_assumptions()
+RATE = float(cfg.get("idr_per_usd", 16000))
 boundary = load_layer("boundary")
 health = load_layer("health_centers")
 default_start = load_csv(START_FILE)
@@ -131,7 +134,7 @@ def team_start(team):
 
 ss = st.session_state
 FIELDS = {  # key: (label, default, step)
-    "budget_idr": ("Budget for today (Rp, 0 = no limit)", 0, 50000),
+    "budget_usd": ("Budget today (US$, 0 = no limit)", 0, 10),
     "paid": ("Paid workers", 2, 1),
     "volunteers": ("Volunteers", 2, 1),
     "motorbikes": ("Motorbikes", 0, 1),
@@ -140,6 +143,7 @@ FIELDS = {  # key: (label, default, step)
 if "pusk_selected" not in ss:
     ss.pusk_selected = [p["name"] for p in saved["puskesmas"] if p["name"] in points] or [pusk["name"].iloc[0]]
     for p in saved["puskesmas"]:
+        p = dict(p, budget_usd=p.get("budget_usd", round(float(p.get("budget_idr", 0) or 0) / RATE)))
         for f in FIELDS:
             ss[f"{p['name']}|{f}"] = int(p.get(f, FIELDS[f][1]))
         ss[f"{p['name']}|hours"] = float(p.get("hours", 6))
@@ -158,6 +162,7 @@ def current_puskesmas():
         item = {"name": name, "lat": float(p["lat"]), "lon": float(p["lon"])}
         for f, (_, default, _) in FIELDS.items():
             item[f] = int(ss.get(f"{name}|{f}", default))
+        item["budget_idr"] = item["budget_usd"] * RATE      # the engine works in rupiah
         item["hours"] = float(ss.get(f"{name}|hours", 6.0))
         leave = ss.get(f"{name}|leave")
         item["leave"] = leave.strftime("%H:%M") if leave is not None else "08:00"
@@ -171,6 +176,8 @@ def build_map(method=None, show_routes=True, starts=(), color_by="priority"):
     """Folium map: sites as dots, optional routes of one plan, puskesmas, and the start."""
     m = folium.Map(location=[sites["lat"].mean(), sites["lon"].mean()], zoom_start=15,
                    tiles="OpenStreetMap")
+    m.fit_bounds([[sites["lat"].min(), sites["lon"].min()], [sites["lat"].max(), sites["lon"].max()]],
+                 padding=(20, 20))
     if boundary is not None:
         folium.GeoJson(boundary, name="Tallo boundary",
                        style_function=lambda _: {"color": "#333", "weight": 2, "fill": False}).add_to(m)
@@ -228,56 +235,71 @@ def legend(color_by):
         html.append(f"<span style='display:inline-block;width:12px;height:12px;border-radius:50%;"
                     f"background:{color};margin-right:6px;vertical-align:middle'></span>{label}<br>")
     html.append("<span style='display:inline-block;width:12px;height:12px;border-radius:50%;"
-                "border:2px solid #000;margin-right:6px;vertical-align:middle'></span>In today's routes<br>")
+                "border:2px solid #888;margin-right:6px;vertical-align:middle'></span>In today's routes<br>")
     html.append("<br><b>Places</b><br>🟢 Taking part today<br>🔵 Other puskesmas<br>")
     if plan_ready:
         html.append("<br><b>Teams</b><br>")
+        several = len({t["puskesmas"] for t in saved["teams"]}) > 1
         for i, t in enumerate(saved["teams"]):
             short = t["puskesmas"].replace("Puskesmas Pembantu", "").replace("Puskesmas", "").strip()
-            html.append(f"<span style='display:inline-block;width:18px;height:4px;"
-                        f"background:{TEAM_COLORS[i % len(TEAM_COLORS)]};margin-right:6px;"
-                        f"vertical-align:middle'></span>Team {i + 1} ({short})<br>")
+            label = f"Team {i + 1}" + (f" · {short.split()[0]}" if several else "")
+            html.append(f"<div style='white-space:nowrap'><span style='display:inline-block;width:18px;"
+                        f"height:4px;background:{TEAM_COLORS[i % len(TEAM_COLORS)]};margin-right:6px;"
+                        f"vertical-align:middle'></span>{label}</div>")
     html.append("</div>")
     return "".join(html)
 
 
 # ---------- page ----------
 
-st.title("Dengai")
-st.caption("Daily dengue inspection routes for Tallo, Makassar. Sites are predicted, not confirmed, "
-           "breeding sites; numbers show inspection value, not health outcomes.")
+st.markdown("<style>.block-container{padding-top:2rem;padding-bottom:2rem}</style>", unsafe_allow_html=True)
+st.markdown("## Dengai <span style='font-size:0.9rem;font-weight:400;opacity:0.7'>"
+            "daily dengue inspection routes for Tallo, Makassar</span>", unsafe_allow_html=True)
+st.caption("Sites are predicted, not confirmed, breeding sites; numbers show inspection value, not health outcomes.")
 
 tab_plan, tab_details, tab_day = st.tabs(["Today's plan", "Weights and comparisons", "Finish the day"])
 
 # ===== Tab 1: the coordinator's daily plan =====
 with tab_plan:
-    left, center, right = st.columns([0.9, 4, 1.9], gap="medium")
+    left, center, right = st.columns([0.8, 4, 2.2], gap="small")
+    PANEL = 600  # map and right panel share this height so the page lines up
 
     with right:
-        st.markdown("#### Puskesmas taking part")
-        st.multiselect("Puskesmas", list(pusk["name"]), key="pusk_selected", label_visibility="collapsed",
-                       help="Or click a puskesmas on the map to add it.")
-        st.caption("Enter what each one has today. Dengai forms the teams.")
-        draft = current_puskesmas()
-        draft_teams, draft_notes = T.form_teams(draft, cfg) if draft else ([], {})
-        for p in draft:
-            name = p["name"]
-            with st.expander(f"{name}: {T.describe(draft_teams, name)}", expanded=len(draft) == 1):
-                for f, (label, default, step) in FIELDS.items():
+        panel = st.container(height=PANEL, border=True)
+        with panel:
+            st.markdown("**Puskesmas taking part**")
+            st.multiselect("Puskesmas", list(pusk["name"]), key="pusk_selected", label_visibility="collapsed",
+                           placeholder="Choose, or click one on the map")
+            draft = current_puskesmas()
+            draft_teams, draft_notes = T.form_teams(draft, cfg) if draft else ([], {})
+            for p in draft:
+                name = p["name"]
+                for f, (_, default, _) in FIELDS.items():
                     ss.setdefault(f"{name}|{f}", default)
-                    st.number_input(label, min_value=0, step=step, key=f"{name}|{f}")
                 ss.setdefault(f"{name}|hours", 6.0)
                 ss.setdefault(f"{name}|leave", datetime.strptime("08:00", "%H:%M").time())
-                st.slider("Hours in the field", 1.0, 10.0, step=0.5, key=f"{name}|hours")
-                st.time_input("Leave at", key=f"{name}|leave", step=900)
-                for note in draft_notes.get(name, []):
-                    st.caption(note)
-        with st.expander("Advanced"):
-            seconds = st.slider("Optimizer search time (seconds)", 5, 60, int(saved["solver_seconds"]), 5,
-                                help="Longer can find slightly better routes.")
-            st.caption(f"Teams of {cfg.get('team_size', 2):g}; "
-                       + ("each led by a paid worker. " if cfg.get("team_needs_paid_lead", 1) else "")
-                       + "Change in config/assumptions.csv.")
+                with st.container(border=True):
+                    st.markdown(f"**{name.replace('Puskesmas ', '')}**  \n"
+                                f"<small>{T.describe(draft_teams, name)}</small>", unsafe_allow_html=True)
+                    label, _, step = FIELDS["budget_usd"]
+                    st.number_input(label, min_value=0, step=step, key=f"{name}|budget_usd")
+                    a1, a2 = st.columns(2)
+                    a1.number_input("Paid workers", min_value=0, step=1, key=f"{name}|paid")
+                    a2.number_input("Volunteers", min_value=0, step=1, key=f"{name}|volunteers")
+                    b1, b2 = st.columns(2)
+                    b1.number_input("Motorbikes", min_value=0, step=1, key=f"{name}|motorbikes")
+                    b2.number_input("Bicycles", min_value=0, step=1, key=f"{name}|bicycles")
+                    c1_, c2_ = st.columns(2)
+                    c1_.number_input("Hours", min_value=1.0, max_value=12.0, step=0.5, key=f"{name}|hours")
+                    c2_.time_input("Leave at", key=f"{name}|leave", step=900)
+                    for note in draft_notes.get(name, []):
+                        st.caption(note)
+            with st.expander("Advanced"):
+                seconds = st.slider("Optimizer search time (seconds)", 5, 60, int(saved["solver_seconds"]), 5,
+                                    help="Longer can find slightly better routes.")
+                st.caption(f"Teams of {cfg.get('team_size', 2):g}; "
+                           + ("each led by a paid worker. " if cfg.get("team_needs_paid_lead", 1) else "")
+                           + f"US$ 1 = Rp {RATE:,.0f}. Change in config/assumptions.csv.")
 
     def inputs(plist):
         """The parts of the inputs that change a plan (ignores tiny coordinate differences)."""
@@ -287,12 +309,12 @@ with tab_plan:
     stale = plan_ready and inputs(draft) != inputs(saved["puskesmas"])
 
     with left:
-        color_by = st.radio("Color dots by", ["priority", "site type"], label_visibility="collapsed")
+        color_by = st.selectbox("Color dots by", ["priority", "site type"])
         st.markdown(legend(color_by), unsafe_allow_html=True)
 
     with center:
         fmap = build_map("optimized", plan_ready and not stale, ss.pusk_selected, color_by)
-        out = st_folium(fmap, height=520, use_container_width=True, key="plan_map",
+        out = st_folium(fmap, height=PANEL, use_container_width=True, key="plan_map",
                         returned_objects=["last_object_clicked_tooltip"])
         clicked = (out or {}).get("last_object_clicked_tooltip") or ""
         if clicked.startswith("Puskesmas: ") and clicked[11:] not in ss.pusk_selected:
@@ -327,10 +349,9 @@ with tab_plan:
         c2.metric("High priority sites reached", f"{summary['high_priority_visited']} of {summary['high_priority_total']}")
         if costs is not None:
             total = costs.iloc[-1]
-            c3.metric("Cost of the day", idr(total["Total (IDR)"]))
-            c3.caption(f"About US$ {total['Total (USD)']:,.2f}")
+            c3.metric("Cost of the day", usd(total["Total (IDR)"]))
             if summary.get("cost_per_high_priority_idr"):
-                c4.metric("Cost per high priority site", idr(summary["cost_per_high_priority_idr"]))
+                c4.metric("Cost per high priority site", usd(summary["cost_per_high_priority_idr"]))
 
         routes_col, cost_col = st.columns([1, 1], gap="large")
 
@@ -342,20 +363,24 @@ with tab_plan:
                 for p in saved["puskesmas"]:
                     spent = body.loc[body["Puskesmas"] == p["name"], "Total (IDR)"].sum()
                     budget = p.get("budget_idr", 0)
-                    rows.append({"Puskesmas": p["name"], "Teams": T.describe(saved["teams"], p["name"]),
-                                 "Budget": idr(budget) if budget else "No limit", "Planned cost": idr(spent),
-                                 "Left": idr(budget - spent) if budget else ""})
+                    rows.append({"Puskesmas": p["name"].replace("Puskesmas ", ""),
+                                 "Teams": T.describe(saved["teams"], p["name"]),
+                                 "Budget": usd(budget) if budget else "No limit", "Planned cost": usd(spent),
+                                 "Left": usd(budget - spent) if budget else ""})
                 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
                 st.markdown("#### Cost by team")
                 show = costs.copy()
                 show["Travel"] = show["Travel"].fillna("").map(lambda k: mode_label(k) if k else "")
                 show["Puskesmas"] = show["Puskesmas"].fillna("").str.replace("Puskesmas ", "", regex=False)
-                money = [c for c in show.columns if "(IDR)" in c]
-                show[money] = show[money].apply(lambda col: col.map(lambda v: f"{v:,.0f}".replace(",", ".")))
-                st.dataframe(show.drop(columns=["Total (USD)"]), hide_index=True, width="stretch")
-                st.caption(f"Labor: paid workers × hours × {idr(cfg.get('wage_idr_per_hour', 0))} per hour"
-                           + (f", volunteers {idr(cfg.get('volunteer_stipend_idr_per_day', 0))} per day"
+                for col in ["Labor", "Fuel", "Larvicide", "Total"]:
+                    show[f"{col} (US$)"] = (show[f"{col} (IDR)"] / RATE).round(2)
+                show = show.drop(columns=[c for c in show.columns if "(IDR)" in c or c == "Total (USD)"])
+                st.dataframe(show, hide_index=True, width="stretch",
+                             column_config={c: st.column_config.NumberColumn(format="$%.2f")
+                                            for c in show.columns if "(US$)" in c})
+                st.caption(f"Labor: paid workers × hours × {usd(cfg.get('wage_idr_per_hour', 0))} per hour"
+                           + (f", volunteers {usd(cfg.get('volunteer_stipend_idr_per_day', 0))} per day"
                               if cfg.get("volunteer_stipend_idr_per_day") else ", volunteers unpaid")
                            + ". Fuel: street km × price per km. Larvicide: expected real sites × price. "
                              "Prices are placeholders in config/assumptions.csv until sourced.")
@@ -433,8 +458,8 @@ with tab_details:
                 "Total priority": s["total_priority"],
                 "Expected real sites": s["expected_real_sites"],
                 "Travel minutes": s["travel_minutes"],
-                "Cost (IDR)": idr(s["total_cost_idr"]) if s.get("total_cost_idr") else "",
-                "Cost per high priority site": idr(s["cost_per_high_priority_idr"])
+                "Cost": usd(s["total_cost_idr"]) if s.get("total_cost_idr") else "",
+                "Cost per high priority site": usd(s["cost_per_high_priority_idr"])
                 if s.get("cost_per_high_priority_idr") else "",
             })
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
