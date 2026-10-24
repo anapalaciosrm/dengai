@@ -1,16 +1,22 @@
-key,value,unit,source
-n_teams,4,teams,placeholder: ask mentor
-hours_per_day,6,hours,placeholder: ask mentor
-walk_speed_kmh,4,km per hour,standard walking speed; slower in alleys
-moto_speed_kmh,15,km per hour,placeholder: city traffic estimate
-travel_mode,walk,mode,placeholder: ask mentor
-inspect_min_container,10,minutes,placeholder
-inspect_min_drain,15,minutes,placeholder
-inspect_min_tire,20,minutes,placeholder
-inspect_min_trash,20,minutes,placeholder
-w_tire,1.0,weight,key container evidence (Tun Lin 2009; Mwakutwaa 2023)
-w_container,0.8,weight,placeholder
-w_drain,0.7,weight,placeholder
-w_trash,0.6,weight,placeholder
-buffer_m,100,meters,Aedes aegypti short flight range; verify source
-rain_mm_last7d,0,mm,CHIRPS or local weather; update daily
+key,value,unit,status,source
+n_teams,4,teams,placeholder,Ask mentor: how many field teams the puskesmas fields
+hours_per_day,6,hours,placeholder,Ask mentor: field hours per day after travel to base and breaks
+travel_mode,walk,mode,placeholder,Ask mentor: foot or motorbike
+walk_speed_kmh,4,km per hour,sourced estimate,Typical adult walking pace about 5 km/h; reduced for dense alleys
+moto_speed_kmh,15,km per hour,placeholder,City traffic estimate; check Makassar traffic data
+inspect_min_container,10,minutes,placeholder,No published figure found; ask mentor; sensitivity test 10/20/30
+inspect_min_drain,15,minutes,placeholder,No published figure found; ask mentor; sensitivity test
+inspect_min_tire,20,minutes,placeholder,No published figure found; tires may need removal; sensitivity test
+inspect_min_trash,20,minutes,placeholder,No published figure found; ask mentor; sensitivity test
+w_tire,1.0,weight,sourced,Key container concept: Tun Lin et al. 2009; tires among top pupae producers in Mwakutwaa et al. 2023
+w_container,0.8,weight,partly sourced,Drums and pots highly productive (Mwakutwaa et al. 2023); exact value is our choice
+w_drain,0.7,weight,placeholder,Our choice; confirm local productivity with mentor
+w_trash,0.6,weight,partly sourced,Rosser lab high risk vs low risk trash classes (2024; 2025); exact value is our choice
+default_confidence,0.87,probability,sourced,U-Net++ tire detection F1 0.87 in Tallo (Hassan et al. 2026); used if data has no confidence
+buffer_m,100,meters,sourced,Average Aedes aegypti flight range about 106 m (Moore and Brown 2022 meta analysis)
+scale_min,0.5,multiplier,design choice,Exposure and clustering scaled to this range so no term zeroes a site
+scale_max,1.5,multiplier,design choice,Same as above; tested in sensitivity analysis
+rain_mm_last7d,0,mm,update daily,CHIRPS or local weather; containers refill after rain
+rain_boost,1.3,multiplier,design choice,Applied if rain_mm_last7d above threshold; egg to adult 7 to 10 days (CDC)
+rain_threshold_mm,10,mm,design choice,Rain needed to count as a refill event; tested in sensitivity analysis
+monte_carlo_runs,1000,runs,design choice,Enough for stable averages; standard practice

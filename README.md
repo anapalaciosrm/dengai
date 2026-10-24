@@ -10,7 +10,8 @@ Team Members: Ana Palacios and Lara Rozanski
 ## Read first
 
 * `docs/CHALLENGE.md`: the organizers' brief, deliverables, and scoring
-* `.github/copilot-instructions.md`: project rules and methods (Copilot reads this automatically)
+* `docs/METHODS.md`: every layer, the established technique behind it, and its source
+* `.github/copilot-instructions.md`: project rules (Copilot reads this automatically)
 
 ## Study area setup (run once, needs internet)
 
