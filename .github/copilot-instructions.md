@@ -47,19 +47,22 @@ baseline comparison, cost analysis (compute, data, travel, staff, any AI tokens,
 * Sensitivity: rerun with different weights and inspection times.
 
 ## Data contract
-`data/processed/sites.csv`
-`site_id, lat, lon, site_type, confidence, priority`
+`data/processed/sites.csv` (input): `site_id, lat, lon, site_type, confidence`
+`data/processed/sites_scored.csv`: adds `buildings_nearby, sites_nearby, exposure, clustering, type_weight, urgency, priority, inspect_min, high_priority`
+`data/processed/travel_minutes.csv`: square table of walking minutes, rows and columns `START` plus site ids
 (the fake data also has `is_real`, a simulated ground truth used ONLY for evaluation, never by the planner)
 
 `outputs/plan_<method>.csv`
-`team_id, visit_order, site_id, lat, lon, arrival_minute`
+`team_id, visit_order, site_id, lat, lon, arrival_minute, priority` (methods: `nearest`, `priority`, `optimized`)
 
-`outputs/summary.json`
-`method, sites_visited, high_priority_visited, total_priority, travel_minutes, cost_usd`
+`outputs/summary_<method>.json`: `method, sites_visited, high_priority_visited, high_priority_total, total_priority, expected_real_sites, travel_minutes, inspection_minutes` (+ `simulated_real_sites_reached` on fake data)
 
 ## File map
 * `engine/setup_area.py` downloads the Tallo boundary, walking network, health centers, buildings (run once, needs internet)
 * `engine/make_fake_sites.py` makes realistic synthetic sites inside Tallo
+* `engine/config.py` paths and `load_assumptions()`; import it as `import config as C`
+* `engine/plan_tools.py` `greedy_plan`, `to_table`, `summarize`, `save`; the optimizer must output the same plan table and use `summarize` and `save` with method `optimized`
+* `run_pipeline.py` runs all steps in order
 * `engine/load_sites.py` converts organizer data into `sites.csv`
 * `engine/enrich_gis.py` exposure, clustering, road access
 * `engine/travel_matrix.py` travel minutes between all sites and start points

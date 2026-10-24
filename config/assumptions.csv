@@ -20,3 +20,6 @@ rain_mm_last7d,0,mm,update daily,CHIRPS or local weather; containers refill afte
 rain_boost,1.3,multiplier,design choice,Applied if rain_mm_last7d above threshold; egg to adult 7 to 10 days (CDC)
 rain_threshold_mm,10,mm,design choice,Rain needed to count as a refill event; tested in sensitivity analysis
 monte_carlo_runs,1000,runs,design choice,Enough for stable averages; standard practice
+start_puskesmas,auto,name,placeholder,auto = puskesmas inside Tallo closest to the sites; replace with the name the mentor confirms
+high_priority_quantile,0.75,share,design choice,Sites in the top 25% of priority count as high priority in reports
+detour_factor,1.3,multiplier,design choice,Straight line fallback only if the street network is missing

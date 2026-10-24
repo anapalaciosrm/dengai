@@ -1,0 +1,11 @@
+{
+  "method": "priority",
+  "sites_visited": 38,
+  "high_priority_visited": 36,
+  "high_priority_total": 50,
+  "total_priority": 40.543,
+  "expected_real_sites": 33.5,
+  "travel_minutes": 732.3,
+  "inspection_minutes": 690.0,
+  "simulated_real_sites_reached": 35
+}

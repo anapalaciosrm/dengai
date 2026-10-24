@@ -25,15 +25,24 @@ Fake site files are already in `data/processed/`, so the app works even before `
 
 ## Pipeline
 
-0. `engine/setup_area.py` and `engine/make_fake_sites.py` prepare the study area and synthetic sites
-1. `engine/load_sites.py` converts the organizers' data into `data/processed/sites.csv`
-2. `engine/enrich_gis.py` adds exposure, clustering, and road access from OpenStreetMap and building footprints
-3. `engine/travel_matrix.py` builds travel times between sites and health centers
-4. `engine/scoring.py` computes the priority score
-5. `engine/baseline.py` plans routes with greedy nearest neighbor
-6. `engine/optimizer.py` plans routes with OR-Tools (team orienteering problem)
-7. `engine/evaluate.py` compares plans and runs the Monte Carlo robustness test
-8. `app.py` is the Streamlit dashboard
+Run everything after setup with one command:
+
+```
+python run_pipeline.py
+streamlit run app.py
+```
+
+0. `engine/setup_area.py` and `engine/make_fake_sites.py` prepare the study area and synthetic sites (run once)
+1. `engine/load_sites.py` converts the organizers' data into `data/processed/sites.csv` (tomorrow)
+2. `engine/enrich_gis.py` adds exposure (buildings within 100 m) and clustering (sites within 100 m)
+3. `engine/scoring.py` computes the priority score
+4. `engine/travel_matrix.py` picks the start puskesmas and computes walking minutes on Tallo's streets
+5. `engine/baseline.py` plans routes with two baselines: nearest site next, highest priority next
+6. `engine/optimizer.py` plans routes with OR-Tools, team orienteering problem (tomorrow)
+7. `engine/evaluate.py` compares plans and runs the Monte Carlo robustness test (tomorrow)
+8. `app.py` is the Streamlit dashboard: map, routes, and comparison table
+
+Shared code: `engine/config.py` (paths and assumptions) and `engine/plan_tools.py` (building and measuring plans).
 
 ## Setup
 
