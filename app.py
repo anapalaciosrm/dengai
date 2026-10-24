@@ -387,11 +387,27 @@ if "report" in q:
     st.stop()
 
 
+def local_host(netloc):
+    host = netloc.split(":")[0]
+    return host in ("localhost", "127.0.0.1") or host.startswith(("10.", "192.168.", "172."))
+
+
+def clean_base(url):
+    """A local Streamlit app only speaks http; tunnels and deployed apps use https."""
+    url = (url or "").strip().rstrip("/")
+    if not url:
+        return "http://localhost:8501"
+    if "://" not in url:
+        url = "http://" + url
+    u = urlparse(url)
+    scheme = "http" if local_host(u.netloc) else u.scheme
+    return f"{scheme}://{u.netloc}"
+
+
 def app_base_url():
     """Address of this app as the coordinator's browser sees it, without path or query."""
     try:
-        u = urlparse(st.context.url)
-        return f"{u.scheme}://{u.netloc}"
+        return clean_base(st.context.url)
     except Exception:
         return "http://localhost:8501"
 
@@ -551,6 +567,7 @@ with tab_plan:
             if "localhost" in base or "127.0.0.1" in base:
                 st.caption("⚠️ Phones cannot open localhost. Use the Network URL from the terminal, "
                            "for example http://10.34.185.35:8501.")
+            base = clean_base(base)
             plan_id = saved.get("plan_id", "default")
             contacts = load_contacts()
             site_info = sites.set_index("site_id")
@@ -713,7 +730,7 @@ with tab_day:
     team_list = saved["teams"] or []
     plan = load_csv(OUTPUTS / "plan_optimized.csv") if plan_ready else None
     contacts = load_contacts()
-    base = ss.get("base_url") or app_base_url()
+    base = clean_base(ss.get("base_url") or app_base_url())
 
     head, refresh = st.columns([5, 1])
     head.markdown(f"**1. Send each team its report link** · {len(received)} of {len(team_list)} reports received")
