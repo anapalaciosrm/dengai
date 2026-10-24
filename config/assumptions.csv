@@ -33,11 +33,11 @@ bike_speed_kmh,10,km per hour,placeholder,Bicycle in dense city streets; ask men
 car_speed_kmh,12,km per hour,placeholder,Car in Makassar traffic; many Tallo alleys are too narrow for cars
 park_min,2,minutes,design choice,Time to park a bike or motorbike at each stop (not used for walking)
 team_size,2,people,placeholder,People per field team; ask mentor; Lara to confirm
-wage_idr_per_hour,20000,IDR per hour,placeholder,Field worker pay per person per hour; Lara to source (Makassar minimum wage)
-fuel_idr_per_km_moto,250,IDR per km,placeholder,Motorbike fuel per km (fuel price divided by km per liter); Lara to source
+wage_idr_per_hour,23980,IDR per hour,sourced,"Makassar UMK 2026 Rp4,148,179/month (South Sulawesi Governor's Decree 2142/XII/2025, via GoodStats) / 173 h = Rp23,980/h, about $1.34/h. Minimum wage, so a floor. Cost Sources Log (Lara)"
+fuel_idr_per_km_moto,222,IDR per km,sourced,"Pertalite Rp10,000/L (Bisnis.com, 16 Oct 2026) / 45 km/L (Honda BeAT: 60.6 lab, 52.9 real road; 45 conservative for stop and go) = Rp222/km. Range Rp165 to 222. Cost Sources Log (Lara)"
 fuel_idr_per_km_car,850,IDR per km,placeholder,Car fuel per km; Lara to source
-larvicide_idr_per_site,5000,IDR per site,placeholder,Larvicide used per real breeding site treated; Lara to source
-idr_per_usd,16000,IDR per USD,placeholder,Exchange rate for the USD column; Lara to update
-volunteer_stipend_idr_per_day,0,IDR per day,placeholder,Transport or meal allowance per volunteer; 0 if unpaid; team to source
+larvicide_idr_per_site,860,IDR per site,sourced,"One 10 g dose temephos 1% (Abate) per site at bulk price Rp86/g (Rp65,000 to 86,000 per kg, KlikDokter). High case retail 10 g sachet Rp4,845 (K-24). Dose 1 g per 10 L (BASF label). Cost Sources Log (Lara)"
+idr_per_usd,17900,IDR per USD,sourced,"Bisnis.com, 2 Oct 2026. Cost Sources Log (Lara)"
+volunteer_stipend_idr_per_day,30000,IDR per day,partly sourced,"Rp30,000 jumantik transport per field visit (example puskesmas BOK budget). Monthly jumantik honor ranges Rp200,000 (Malang 2024) to Rp750,000 (Jakarta 2026). Makassar rate (Perwali 22/2025) still to retrieve. Cost Sources Log (Lara)"
 team_needs_paid_lead,1,yes or no,design choice,1 = every team has a paid worker as lead (volunteers join them); 0 = volunteer only teams allowed
 carryover_boost,1.5,multiplier,design choice,"Priority multiplier for sites a team could not reach or get into, so they go first the next day"
