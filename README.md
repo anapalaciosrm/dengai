@@ -5,6 +5,8 @@ Stanford Cleantech Hackathon, Track 2 (Climate and Health).
 
 AI finds the breeding sites. Dengai plans the response: which sites each team visits, in what order, within their working hours.
 
+Team Members: Ana Palacios and Lara Rozanski
+
 ## Pipeline
 
 1. `engine/load_sites.py` converts the organizers' data into `data/processed/sites.csv`
@@ -16,12 +18,6 @@ AI finds the breeding sites. Dengai plans the response: which sites each team vi
 7. `engine/evaluate.py` compares plans and runs the Monte Carlo robustness test
 8. `app.py` is the Streamlit dashboard
 
-## Setup
-
-```
-pip install -r requirements.txt
-streamlit run app.py
-```
 
 ## Data rules
 
