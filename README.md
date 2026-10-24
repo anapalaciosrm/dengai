@@ -18,6 +18,12 @@ Team Members: Ana Palacios and Lara Rozanski
 7. `engine/evaluate.py` compares plans and runs the Monte Carlo robustness test
 8. `app.py` is the Streamlit dashboard
 
+## Setup
+
+```
+pip install -r requirements.txt
+streamlit run app.py
+```
 
 ## Data rules
 
