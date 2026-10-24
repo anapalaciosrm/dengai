@@ -595,11 +595,11 @@ with tab_plan:
                 st.dataframe(show, hide_index=True, width="stretch",
                              column_config={c: st.column_config.NumberColumn(format="$%.2f")
                                             for c in show.columns if "(US$)" in c})
-                st.caption(f"Labor: paid workers × hours × {usd(cfg.get('wage_idr_per_hour', 0))} per hour"
+                st.caption((f"Labor: paid workers × hours × {usd(cfg.get('wage_idr_per_hour', 0))} per hour"
                            + (f", volunteers {usd(cfg.get('volunteer_stipend_idr_per_day', 0))} per day"
                               if cfg.get("volunteer_stipend_idr_per_day") else ", volunteers unpaid")
                            + ". Fuel: street km × price per km. Larvicide: expected real sites × price. "
-                             "Prices and sources are in config/assumptions.csv.")
+                             "Prices and sources are in config/assumptions.csv.").replace("$", "\\$"))
             access = load_csv(Path("data/processed/site_access.csv"))
             if access is not None and "hard_to_reach" in access and access["hard_to_reach"].any():
                 hard = access[access["hard_to_reach"]].merge(sites, left_on="id", right_on="site_id")
