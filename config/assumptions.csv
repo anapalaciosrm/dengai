@@ -26,3 +26,4 @@ detour_factor,1.3,multiplier,design choice,Straight line fallback only if the st
 solver_seconds,30,seconds,design choice,OR-Tools search time limit; longer can find slightly better plans; lower for a live demo
 day_start,08:00,time,placeholder,Ask mentor: when teams leave the puskesmas; used for arrival times in team messages
 nav_max_waypoints,9,stops,sourced,Google Maps URLs allow up to 9 waypoints per directions link (3 in mobile browsers)
+merge_radius_m,10,meters,design choice,Detections closer than this are one site (a tire pile is inspected once); ask mentor
