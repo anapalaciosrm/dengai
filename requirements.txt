@@ -1,6 +1,7 @@
 pandas
 numpy
-geopandas
+pyproj==3.6.1
+geopandas==1.0.1
 shapely
 osmnx
 ortools

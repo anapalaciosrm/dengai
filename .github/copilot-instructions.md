@@ -1,6 +1,6 @@
 # Instructions for GitHub Copilot (and any AI helper) on the Dengai project
 
-Read `docs/CHALLENGE.md` for the full brief. Everything below follows from it.
+Read `docs/CHALLENGE.md` for the full brief and `docs/METHODS.md` for every technique and source. Everything below follows from them.
 
 ## What we are building
 A planning tool for a dengue vector control team in Tallo sub-district, Makassar, Indonesia.
