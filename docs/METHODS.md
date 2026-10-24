@@ -107,21 +107,17 @@ $M$ teams. $S_i$ is the score of site $i$ (our priority). $t_{ij}$ is the time f
 Variables: $x_{ijm} = 1$ if team $m$ goes directly from $i$ to $j$; $y_{im} = 1$ if team $m$
 visits $i$; $u_{im}$ is the position of $i$ in team $m$'s route.
 
-$$\max \sum_{m=1}^{M} \sum_{i=2}^{N-1} S_i \, y_{im} \tag{1}$$
-
-subject to
-
-$$\sum_{m}\sum_{j} x_{1jm} = \sum_{m}\sum_{i} x_{iNm} = M \tag{2}$$
-
-$$\sum_{m} y_{km} \le 1 \quad \forall k \tag{3}$$
-
-$$\sum_{i} x_{ikm} = \sum_{j} x_{kjm} = y_{km} \quad \forall k, m \tag{4}$$
-
-$$\sum_{i}\sum_{j} t_{ij}\, x_{ijm} \le T_{max} \quad \forall m \tag{5}$$
-
-$$u_{im} - u_{jm} + 1 \le (N-1)(1 - x_{ijm}) \quad \forall i, j, m \tag{6}$$
-
-$$x_{ijm}, y_{im} \in \{0, 1\} \tag{7}$$
+$$
+\begin{aligned}
+\max \quad & \sum_{m=1}^{M} \sum_{i=2}^{N-1} S_i \, y_{im} & & (1) \\[1ex]
+\text{subject to} \quad & \sum_{m}\sum_{j} x_{1jm} = \sum_{m}\sum_{i} x_{iNm} = M & & (2) \\[1ex]
+& \sum_{m} y_{km} \le 1 & \forall k & \quad (3) \\[1ex]
+& \sum_{i} x_{ikm} = \sum_{j} x_{kjm} = y_{km} & \forall k, m & \quad (4) \\[1ex]
+& \sum_{i}\sum_{j} t_{ij}\, x_{ijm} \le T_{max} & \forall m & \quad (5) \\[1ex]
+& u_{im} - u_{jm} + 1 \le (N-1)(1 - x_{ijm}) & \forall i, j, m & \quad (6) \\[1ex]
+& x_{ijm}, y_{im} \in \{0, 1\} & & \quad (7)
+\end{aligned}
+$$
 
 (1) collect the most score; (2) every team starts and ends at the puskesmas; (3) each site
 at most once; (4) a team that enters a site also leaves it; (5) each route fits the day;
