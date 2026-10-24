@@ -258,17 +258,23 @@ def legend(color_by):
 
 SHORT_STATUS = {"breeding": "Breeding found", "clear": "No breeding", "false": "Wrong detection",
                 "cleared": "Cleared by residents", "no_access": "Couldn't get in", "not_reached": "Didn't get there"}
+# The field form shows Indonesian first (teams in Makassar), English second. Check wording with the mentor.
+FORM_STATUS = {"breeding": "Ada jentik · Breeding found", "clear": "Tidak ada jentik · No breeding",
+               "false": "Bukan tempat perindukan · Wrong detection",
+               "cleared": "Sudah dibersihkan warga · Cleared by residents",
+               "no_access": "Tidak bisa masuk · Couldn't get in",
+               "not_reached": "Tidak sempat · Didn't get there"}
 
 
 def report_page(team_id, plan_id, k):
     """Mobile form: mark every stop, write a summary, submit."""
     st.markdown("<style>.block-container{max-width:640px;padding-top:3.5rem}</style>", unsafe_allow_html=True)
-    st.markdown(f"### Dengai · Team {team_id} report")
+    st.markdown(f"### Dengai · Laporan Tim {team_id}  \n<small>Team {team_id} report</small>", unsafe_allow_html=True)
     if k != RP.key(plan_id, team_id):
-        st.error("This link is not valid. Ask your coordinator for a new one.")
+        st.error("Link ini tidak berlaku. Minta link baru ke koordinator. · This link is not valid; ask your coordinator.")
         return
     if str(saved.get("plan_id")) != str(plan_id):
-        st.warning("This link is from an earlier plan. Ask your coordinator for today's link.")
+        st.warning("Link ini dari rencana sebelumnya. · This link is from an earlier plan; ask for today's link.")
         return
     plan = load_csv(OUTPUTS / "plan_optimized.csv")
     team = plan[plan["team_id"] == team_id].sort_values("visit_order") if plan is not None else None
@@ -278,35 +284,36 @@ def report_page(team_id, plan_id, k):
         return
     info = sites.set_index("site_id")
     earlier = RP.load(plan_id, team_id)
-    st.caption(f"{tcfg['puskesmas']} · {len(team)} stops · tap what happened at each one")
+    st.caption(f"{tcfg['puskesmas']} · {len(team)} titik / stops · pilih apa yang terjadi di setiap titik / tap what happened at each one")
     if earlier:
-        st.success(f"Report received at {earlier['submitted'][-5:]}. You can change it and send again.")
+        st.success(f"Laporan diterima {earlier['submitted'][-5:]}. Bisa diubah dan dikirim lagi. · Received; you can edit and resend.")
 
     with st.form("report"):
-        leader = st.text_input("Your name", earlier.get("leader", "") if earlier else
+        leader = st.text_input("Nama Anda · Your name", earlier.get("leader", "") if earlier else
                                load_contacts().get(str(team_id), {}).get("name", ""))
         stops = {}
         for n, row in enumerate(team.itertuples(), start=1):
             kind = info.at[row.site_id, "site_type"] if row.site_id in info.index else ""
             when = N.clock(tcfg["leave"], row.arrival_minute)
             st.markdown(f"**{n}. {row.site_id}** · {kind} · planned {when} · "
-                        f"[map]({N.stop_link(row.lat, row.lon, tcfg['mode'])})")
+                        f"[peta / map]({N.stop_link(row.lat, row.lon, tcfg['mode'])})")
             default = (earlier or {}).get("stops", {}).get(row.site_id)
-            stops[row.site_id] = st.pills(f"Stop {n}", list(SHORT_STATUS), format_func=SHORT_STATUS.get,
+            stops[row.site_id] = st.pills(f"Stop {n}", list(SHORT_STATUS), format_func=FORM_STATUS.get,
                                           default=default, key=f"stop_{row.site_id}",
                                           label_visibility="collapsed")
-        summary = st.text_area("What happened today?", (earlier or {}).get("summary", ""), height=120,
-                               placeholder="Anything that slowed you down, places to revisit, residents "
-                                           "who helped. Indonesian or English is fine.")
-        sent = st.form_submit_button("Send report", type="primary", use_container_width=True)
+        summary = st.text_area("Apa yang terjadi hari ini? · What happened today?", (earlier or {}).get("summary", ""), height=120,
+                               placeholder="Hambatan, tempat yang perlu dikunjungi lagi, warga yang membantu. "
+                                           "Bahasa Indonesia atau English.")
+        sent = st.form_submit_button("Kirim laporan · Send report", type="primary", use_container_width=True)
     if sent:
         missing = [s for s, v in stops.items() if not v]
         if missing:
-            st.warning(f"{len(missing)} stop(s) have no answer yet. Choose one for each, "
-                       "or 'Didn't get there' if you did not reach it.")
+            st.warning(f"{len(missing)} titik belum diisi. Pilih satu untuk setiap titik, atau 'Tidak sempat'. · "
+                       f"{len(missing)} stop(s) have no answer yet; choose one for each.")
         else:
             RP.save(plan_id, team_id, stops, summary, leader)
-            st.success("Thank you! Your report was sent to the coordinator. You can close this page.")
+            st.success("Terima kasih! Laporan sudah terkirim ke koordinator. · Thank you! Your report was sent. "
+                       "You can close this page.")
 
 
 q = st.query_params
@@ -642,51 +649,75 @@ with tab_day:
     plan_id = saved.get("plan_id", "default")
     received = RP.load_all(plan_id) if plan_ready else {}
     team_list = saved["teams"] or []
-    st.caption(f"Reports from the teams' end of day links: {len(received)} of {len(team_list)} received. "
-               "Send the links from each team's card in Today's plan.")
-    if st.button("Check for new reports"):
-        st.rerun()
+    plan = load_csv(OUTPUTS / "plan_optimized.csv") if plan_ready else None
+    contacts = load_contacts()
+    base = ss.get("base_url") or app_base_url()
 
+    head, refresh = st.columns([5, 1])
+    head.markdown(f"**1. Send each team its report link** · {len(received)} of {len(team_list)} reports received")
+    if refresh.button("Check for new reports", use_container_width=True):
+        st.rerun()
+    if "localhost" in base or "127.0.0.1" in base:
+        st.warning("Links point to localhost, which phones cannot open. Set the address in Today's plan "
+                   "(Team routes) to the Network URL from the terminal.")
+
+    all_links = []
+    for t in team_list:
+        team_id = t["team_id"]
+        person = contacts.get(str(team_id), {})
+        link = RP.link(base, plan_id, team_id)
+        all_links.append((team_id, person.get("name", ""), link))
+        r = received.get(team_id)
+        with st.container(border=True):
+            c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.6, 1.3, 1.1], vertical_alignment="center")
+            c1.markdown(f"**Team {team_id}** · {t['puskesmas'].replace('Puskesmas ', '')}")
+            c2.markdown(f"{person.get('name') or '<i>no leader name</i>'}  \n<small>{person.get('phone') or 'no number'}</small>",
+                        unsafe_allow_html=True)
+            c3.markdown(f"✅ Received {r['submitted'][-5:]}" if r else "⏳ Waiting")
+            c4.link_button("Send again" if r else ("Send link" if person.get("phone") else "Share link"),
+                           N.whatsapp_link(N.report_message(team_id, person.get("name", ""), link), person.get("phone")),
+                           type="secondary" if r else "primary", use_container_width=True)
+            c5.link_button("Open form", link, use_container_width=True)
+
+    if all_links:
+        g1, g2 = st.columns([2, 3], vertical_alignment="center")
+        g1.link_button("Send all links to a WhatsApp group", N.whatsapp_link(N.group_message(all_links)),
+                       use_container_width=True)
+        with g2.popover("See the messages teams receive"):
+            st.markdown("**To one team leader**")
+            st.code(N.report_message(all_links[0][0], all_links[0][1], all_links[0][2]), language=None)
+            st.markdown("**To a group**")
+            st.code(N.group_message(all_links), language=None)
+        st.caption("Leader names and numbers come from the team cards in Today's plan. "
+                   "Each link opens only that team's form for today's plan.")
+
+    st.markdown("**2. What each team reported**")
     if received:
         counts = RP.tally(received)
         cols = st.columns(len(SHORT_STATUS))
         for col, (code, label) in zip(cols, SHORT_STATUS.items()):
             col.metric(label, counts.get(code, 0))
-        inspected = counts["breeding"] + counts["clear"] + counts["false"] + counts["cleared"]
-        if inspected:
-            st.caption(f"Detections confirmed real: {counts['breeding'] + counts['clear'] + counts['cleared']} "
-                       f"of {inspected} inspected ({counts['false']} wrong detections). "
-                       f"{counts['not_reached'] + counts['no_access']} stops to carry over to tomorrow.")
-
-    plan = load_csv(OUTPUTS / "plan_optimized.csv") if plan_ready else None
-    contacts = load_contacts()
     for t in team_list:
         team_id = t["team_id"]
         r = received.get(team_id)
-        status = f"received {r['submitted'][-5:]}" + (f" from {r['leader']}" if r.get("leader") else "") \
-            if r else "waiting"
-        with st.expander(f"Team {team_id} ({t['puskesmas'].replace('Puskesmas ', '')}): {status}",
-                         expanded=bool(r)):
+        title = f"Team {team_id}: " + (f"received {r['submitted'][-5:]}" + (f" from {r['leader']}" if r.get("leader") else "")
+                                       if r else "no report yet")
+        with st.expander(title, expanded=False):
             if r:
-                rows = []
                 team = plan[plan["team_id"] == team_id].sort_values("visit_order") if plan is not None else None
                 order = list(team["site_id"]) if team is not None else list(r["stops"])
-                for n, site in enumerate(order, start=1):
-                    rows.append({"Stop": n, "Site": site, "What happened": SHORT_STATUS.get(r["stops"].get(site), "")})
+                rows = [{"Stop": n, "Site": site, "What happened": SHORT_STATUS.get(r["stops"].get(site), "")}
+                        for n, site in enumerate(order, start=1)]
                 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
                 if r.get("summary"):
                     st.markdown(f"> {r['summary']}")
             else:
-                person = contacts.get(str(team_id), {})
-                link = RP.link(ss.get("base_url", app_base_url()), plan_id, team_id)
-                st.link_button("Send end of day link on WhatsApp",
-                               N.whatsapp_link(N.report_message(team_id, person.get("name", ""), link),
-                                               person.get("phone")))
-                st.text_area("Or paste the team's WhatsApp reply here", key=f"debrief_{team_id}", height=80)
+                st.text_area("Paste the team's WhatsApp reply here if they did not use the link",
+                             key=f"debrief_{team_id}", height=80)
 
     if received and plan is not None:
         st.divider()
-        st.markdown("### Daily report")
+        st.markdown("### 3. Daily report")
         rep = RP.daily_report(plan, received, sites.set_index("site_id"), team_list, SHORT_STATUS)
         num = rep["numbers"]
         m1, m2, m3, m4, m5 = st.columns(5)
