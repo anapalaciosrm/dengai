@@ -11,6 +11,7 @@ STEPS = [
     "engine/scoring.py",
     "engine/travel_matrix.py",
     "engine/baseline.py",
+    "engine/optimizer.py",
 ]
 
 for step in STEPS:
