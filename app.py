@@ -145,17 +145,21 @@ if start is not None:
     folium.Marker([start["lat"].iloc[0], start["lon"].iloc[0]], tooltip=f"Start: {start['name'].iloc[0]}",
                   icon=folium.Icon(color="green", icon="home")).add_to(m)
 
-if show_health and health is not None:
+if health is not None:
+    # Puskesmas (the teams' bases) always show; other health facilities only when ticked.
     for _, row in health.iterrows():
+        if not (row.get("is_puskesmas") or show_health):
+            continue
         label = row.get("name") or "Health facility"
         folium.Marker([row.geometry.y, row.geometry.x], tooltip=label,
-                      icon=folium.Icon(color="lightgray", icon="plus")).add_to(m)
+                      icon=folium.Icon(color="blue" if row.get("is_puskesmas") else "lightgray",
+                                       icon="plus")).add_to(m)
 
 st_folium(m, height=600, use_container_width=True)
 
 if color_by == "priority":
     st.caption("Dark red: highest priority, light: lowest. Black outline: inspected in this plan. "
-               "Lines: each team's order of visits (drawn straight; teams walk the streets).")
+               "Lines: each team's walking route along the streets. Green house: start. Blue cross: puskesmas.")
 else:
     st.caption("Red tire, orange container, blue drain, purple trash. Black outline: inspected in this plan.")
 
