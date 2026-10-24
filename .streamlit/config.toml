@@ -1,0 +1,7 @@
+# Dengai brand theme: navy, cream and terracotta from the logo
+[theme]
+base = "light"
+primaryColor = "#C2412D"
+backgroundColor = "#F6F3EC"
+secondaryBackgroundColor = "#ECE6D8"
+textColor = "#1D2440"

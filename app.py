@@ -35,17 +35,54 @@ OUTPUTS = Path("outputs")
 CONTACTS_FILE = OUTPUTS / "team_contacts.json"   # local only (outputs/ is not on GitHub)
 DEBRIEF_DIR = OUTPUTS / "debriefs"
 
-TYPE_COLORS = {"tire": "#d7301f", "container": "#fc8d59", "drain": "#4575b4", "trash": "#7b3294"}
-PRIORITY_COLORS = [("High priority", "#b2182b"), ("Medium", "#ef8a62"), ("Low", "#fddbc7")]
-TEAM_COLORS = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666",
-               "#1f78b4", "#b15928", "#6a3d9a", "#33a02c"]
+# Brand palette (from the Dengai logo): navy, cream, terracotta, peach
+NAVY, CREAM, TERRACOTTA, PEACH, SAND = "#1D2440", "#F6F3EC", "#C2412D", "#E08A6B", "#ECE6D8"
+TYPE_COLORS = {"tire": TERRACOTTA, "container": PEACH, "drain": "#2F6F8F", "trash": "#6B5B95"}
+PRIORITY_COLORS = [("High priority", TERRACOTTA), ("Medium", PEACH), ("Low", "#F1D5C8")]
+TEAM_COLORS = [NAVY, TERRACOTTA, "#2A9D8F", "#E9A23B", "#6B5B95", PEACH, "#4F7CAC", "#8A9A5B",
+               "#9C6644", "#264653", "#B5838D", "#5C677D"]
 METHOD_LABELS = {
     "nearest": "Baseline 1: nearest site next",
     "priority": "Baseline 2: highest priority next",
     "optimized": "Dengai optimizer",
 }
 
-st.set_page_config(page_title="Dengai", page_icon="🦟", layout="wide")
+ASSETS = Path(__file__).resolve().parent / "assets"
+LOGO_FILE, ICON_FILE = ASSETS / "dengai_logo.png", ASSETS / "dengai_icon.png"
+st.set_page_config(page_title="Dengai", page_icon=str(ICON_FILE) if ICON_FILE.exists() else "🦟",
+                   layout="wide")
+
+
+def brand_css():
+    """Fonts and accents that match the pitch deck: Space Grotesk headings, Public Sans text."""
+    st.markdown(f"""<style>
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap');
+html, body, [class*="css"], .stMarkdown, .stText, p, li, label, input, textarea, button {{
+    font-family: 'Public Sans', sans-serif; }}
+h1, h2, h3, h4, [data-testid="stMetricValue"] {{
+    font-family: 'Space Grotesk', sans-serif !important; color: {NAVY}; letter-spacing: -0.01em; }}
+[data-testid="stMetricValue"] {{ font-weight: 700; }}
+[data-testid="stMetricLabel"] p {{ color: #4A5568; }}
+.stTabs [data-baseweb="tab"] p {{ font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 1rem; }}
+.stTabs [aria-selected="true"] p {{ color: {TERRACOTTA}; }}
+div[data-testid="stVerticalBlockBorderWrapper"] {{ background: #FFFDF8; border-radius: 12px; }}
+.dg-header {{ display:flex; align-items:center; gap:22px; background:{NAVY}; border-radius:14px;
+    padding:14px 22px; margin-bottom:6px; }}
+.dg-header img {{ height:46px; }}
+.dg-header .dg-sub {{ color:{CREAM}; opacity:.85; font-size:.95rem; line-height:1.3; }}
+.dg-header .dg-sub b {{ color:{PEACH}; font-weight:600; }}
+</style>""", unsafe_allow_html=True)
+
+
+def brand_header(subtitle):
+    """Navy bar with the Dengai logo, like the title slide."""
+    import base64
+    img = ""
+    if LOGO_FILE.exists():
+        img = f"<img src='data:image/png;base64,{base64.b64encode(LOGO_FILE.read_bytes()).decode()}' alt='Dengai'>"
+    else:
+        img = f"<span style='color:{CREAM};font:700 2rem Space Grotesk'>deng<span style='color:{PEACH}'>ai</span></span>"
+    st.markdown(f"<div class='dg-header'>{img}<div class='dg-sub'>{subtitle}</div></div>", unsafe_allow_html=True)
 
 
 # ---------- loading helpers ----------
@@ -182,7 +219,7 @@ def build_map(method=None, show_routes=True, starts=(), color_by="priority"):
                  padding=(20, 20))
     if boundary is not None:
         folium.GeoJson(boundary, name="Tallo boundary",
-                       style_function=lambda _: {"color": "#333", "weight": 2, "fill": False}).add_to(m)
+                       style_function=lambda _: {"color": NAVY, "weight": 2, "fill": False}).add_to(m)
 
     visited = set()
     if method and show_routes and plan_ready:
@@ -214,7 +251,7 @@ def build_map(method=None, show_routes=True, starts=(), color_by="priority"):
             tip += " (in today's routes)" if is_visited else " (not today)"
         folium.CircleMarker(
             location=[row["lat"], row["lon"]], radius=4 + 4 * row["confidence"],
-            color="#000" if is_visited else color, weight=2 if is_visited else 1,
+            color=NAVY if is_visited else color, weight=2 if is_visited else 1,
             fill=True, fill_color=color, fill_opacity=0.9 if (is_visited or not visited) else 0.35,
             tooltip=tip,
         ).add_to(m)
@@ -264,7 +301,8 @@ SHORT_STATUS = {"breeding": "Breeding found", "clear": "No breeding", "false": "
 def report_page(team_id, plan_id, k):
     """Mobile field form (Lara's design): every stop, then the end of the day."""
     st.markdown("<style>.block-container{max-width:640px;padding-top:3.5rem}</style>", unsafe_allow_html=True)
-    st.markdown(f"### Dengai · Team {team_id} report")
+    brand_css()
+    brand_header(f"<b>Team {team_id} report</b><br>End of day field form")
     if k != RP.key(plan_id, team_id):
         st.error("This link is not valid. Ask your coordinator for a new one.")
         return
@@ -405,8 +443,9 @@ def app_base_url():
 
 
 st.markdown("<style>.block-container{padding-top:2rem;padding-bottom:2rem}</style>", unsafe_allow_html=True)
-st.markdown("## Dengai <span style='font-size:0.9rem;font-weight:400;opacity:0.7'>"
-            "daily dengue inspection routes for Tallo, Makassar</span>", unsafe_allow_html=True)
+brand_css()
+brand_header("<b>AI finds the breeding sites. Dengai plans the response.</b><br>"
+             "Daily dengue inspection routes for Tallo, Makassar")
 st.caption("Sites are predicted, not confirmed, breeding sites; numbers show inspection value, not health outcomes.")
 
 tab_plan, tab_details, tab_day = st.tabs(["Today's plan", "Weights and comparisons", "Finish the day"])
@@ -835,7 +874,7 @@ with tab_day:
                 mm = folium.Map(location=[sites["lat"].mean(), sites["lon"].mean()], zoom_start=15)
                 mm.fit_bounds([[sites["lat"].min(), sites["lon"].min()], [sites["lat"].max(), sites["lon"].max()]])
                 if boundary is not None:
-                    folium.GeoJson(boundary, style_function=lambda _: {"color": "#333", "weight": 2,
+                    folium.GeoJson(boundary, style_function=lambda _: {"color": NAVY, "weight": 2,
                                                                        "fill": False}).add_to(mm)
                 for m in missed.to_dict("records"):
                     folium.Marker([m["lat"], m["lon"]], tooltip=f"{m['site_id']} ({m['site_type']}): {m['reason']}, "
