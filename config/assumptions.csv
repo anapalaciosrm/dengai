@@ -1,0 +1,16 @@
+key,value,unit,source
+n_teams,4,teams,placeholder: ask mentor
+hours_per_day,6,hours,placeholder: ask mentor
+walk_speed_kmh,4,km per hour,standard walking speed; slower in alleys
+moto_speed_kmh,15,km per hour,placeholder: city traffic estimate
+travel_mode,walk,mode,placeholder: ask mentor
+inspect_min_container,10,minutes,placeholder
+inspect_min_drain,15,minutes,placeholder
+inspect_min_tire,20,minutes,placeholder
+inspect_min_trash,20,minutes,placeholder
+w_tire,1.0,weight,key container evidence (Tun Lin 2009; Mwakutwaa 2023)
+w_container,0.8,weight,placeholder
+w_drain,0.7,weight,placeholder
+w_trash,0.6,weight,placeholder
+buffer_m,100,meters,Aedes aegypti short flight range; verify source
+rain_mm_last7d,0,mm,CHIRPS or local weather; update daily

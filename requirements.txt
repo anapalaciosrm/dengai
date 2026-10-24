@@ -1,0 +1,10 @@
+pandas
+numpy
+geopandas
+shapely
+osmnx
+ortools
+streamlit
+folium
+streamlit-folium
+codecarbon
