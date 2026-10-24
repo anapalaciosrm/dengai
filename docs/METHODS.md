@@ -65,6 +65,23 @@ confidence may not exist. Fallback: give every detection the model's accuracy (`
 **Honest limitation:** we cannot see how long each container has held water, so urgency is
 citywide (rain), and persistence is captured by type weights.
 
+**Scaling exposure and clustering.** Raw counts are mapped linearly onto 0.5 to 1.5 (min max scaling):
+
+$$\text{scaled}_i = 0.5 + \frac{c_i - \min_k c_k}{\max_k c_k - \min_k c_k} \times (1.5 - 0.5)$$
+
+The most crowded site gets 1.5, the emptiest 0.5, an average site about 1.0. The floor of 0.5
+means no single term can zero out a site. Min max scaling is sensitive to one extreme site.
+
+**Why multiply instead of add.** Each term scales the others. A detection that is probably
+false (low confidence) should count for little however many homes surround it; with a sum,
+high exposure could hide a bad detection.
+
+**Worked example, top site S0117 (fake data):**
+tire 1.0 × confidence 0.887 × exposure 1.243 × clustering 1.346 × urgency 1.0 = **1.484**
+
+Sites in the top 25% of priority are tagged `high_priority` for reporting only; the
+optimizer uses the continuous score.
+
 ## 4. Routing teams
 
 | What | Technique | Source | Status |
@@ -77,6 +94,49 @@ citywide (rain), and persistence is captured by type weights.
 
 **Our contribution:** existing work routes fogging trucks or whole neighborhoods. We route
 inspectors to individual drone detected sites, with detection uncertainty built in.
+
+### The team orienteering model
+
+Standard formulation (Chao, Golden, Wasil 1996; survey by Vansteenwegen, Souffriau,
+Van Oudheusden, *European Journal of Operational Research* 209 (2011) 1 to 10).
+
+Nodes $1 \dots N$: node 1 is the start and node $N$ the end (for us, both are the puskesmas).
+$M$ teams. $S_i$ is the score of site $i$ (our priority). $t_{ij}$ is the time from $i$ to $j$
+(for us: inspection minutes at $i$ plus walking minutes to $j$). $T_{max}$ is the work day.
+
+Variables: $x_{ijm} = 1$ if team $m$ goes directly from $i$ to $j$; $y_{im} = 1$ if team $m$
+visits $i$; $u_{im}$ is the position of $i$ in team $m$'s route.
+
+$$\max \sum_{m=1}^{M} \sum_{i=2}^{N-1} S_i \, y_{im} \tag{1}$$
+
+subject to
+
+$$\sum_{m}\sum_{j} x_{1jm} = \sum_{m}\sum_{i} x_{iNm} = M \tag{2}$$
+
+$$\sum_{m} y_{km} \le 1 \quad \forall k \tag{3}$$
+
+$$\sum_{i} x_{ikm} = \sum_{j} x_{kjm} = y_{km} \quad \forall k, m \tag{4}$$
+
+$$\sum_{i}\sum_{j} t_{ij}\, x_{ijm} \le T_{max} \quad \forall m \tag{5}$$
+
+$$u_{im} - u_{jm} + 1 \le (N-1)(1 - x_{ijm}) \quad \forall i, j, m \tag{6}$$
+
+$$x_{ijm}, y_{im} \in \{0, 1\} \tag{7}$$
+
+(1) collect the most score; (2) every team starts and ends at the puskesmas; (3) each site
+at most once; (4) a team that enters a site also leaves it; (5) each route fits the day;
+(6) no disconnected loops (Miller Tucker Zemlin); (7) yes or no decisions.
+
+**How `engine/optimizer.py` implements it.** OR-Tools minimizes, so maximizing collected
+score becomes minimizing skipped score, plus a small travel term to break ties:
+
+$$\min \sum_{i,j} \text{travel}_{ij}\, x_{ij} + P \sum_i S_i\,(1 - y_i), \qquad P = 100{,}000$$
+
+* The penalty term is `AddDisjunction` (each site optional, skipping costs its priority).
+* Constraint (5) is the `Time` dimension, capped at `hours_per_day`.
+* Constraints (2), (3), (4), (6) are built into the OR-Tools routing model.
+* Solved with guided local search for `solver_seconds`. This gives a near optimal plan,
+  not a proven optimum. Say "near optimal" in the pitch.
 
 ## 5. Evaluation
 

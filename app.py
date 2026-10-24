@@ -108,11 +108,16 @@ visited = set()
 if method:
     plan = load_csv(OUTPUTS / f"plan_{method}.csv")
     visited = set(plan["site_id"])
+    # Street paths from engine/route_paths.py; without them, draw straight lines.
+    paths_file = OUTPUTS / f"paths_{method}.json"
+    street_paths = json.loads(paths_file.read_text()) if paths_file.exists() else {}
     for team_id, team in plan.groupby("team_id"):
         team = team.sort_values("visit_order")
-        path = [[start["lat"].iloc[0], start["lon"].iloc[0]]] if start is not None else []
-        path += team[["lat", "lon"]].values.tolist()
-        path += path[:1]  # back to start
+        path = street_paths.get(str(int(team_id)))
+        if not path:
+            path = [[start["lat"].iloc[0], start["lon"].iloc[0]]] if start is not None else []
+            path += team[["lat", "lon"]].values.tolist()
+            path += path[:1]  # back to start
         folium.PolyLine(path, color=TEAM_COLORS[(team_id - 1) % len(TEAM_COLORS)], weight=3,
                         opacity=0.8, tooltip=f"Team {team_id}: {len(team)} sites").add_to(m)
 

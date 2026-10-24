@@ -12,6 +12,7 @@ STEPS = [
     "engine/travel_matrix.py",
     "engine/baseline.py",
     "engine/optimizer.py",
+    "engine/route_paths.py",
 ]
 
 for step in STEPS:
