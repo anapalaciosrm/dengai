@@ -109,6 +109,19 @@ def read_routes(manager, routing, solution, ids, n_teams):
     return teams
 
 
+def optimized_plan(sites, travel, n_teams, day_minutes, seconds):
+    """Build, solve, and return the optimized plan table. Used here and by evaluate.py."""
+    manager, routing, ids = build_model(sites, travel, n_teams, day_minutes)
+    solution = solve(manager, routing, seconds)
+    if solution is None:
+        # Never leave the demo without a plan.
+        print("Solver found no plan; using the nearest site baseline instead.")
+        return P.greedy_plan(sites, travel, n_teams, day_minutes,
+                             lambda cur, feas: min(feas, key=lambda s: travel.at[cur, s]))
+    teams = read_routes(manager, routing, solution, ids, n_teams)
+    return P.to_table(teams, sites)
+
+
 def main():
     cfg, sites, travel, day_minutes = P.load_inputs()
     n_teams = int(cfg["n_teams"])
@@ -117,17 +130,7 @@ def main():
     print(f"Planning {len(sites)} sites for {n_teams} teams, {day_minutes:.0f} min each, "
           f"searching up to {seconds:.0f} s")
     start = time.time()
-    manager, routing, ids = build_model(sites, travel, n_teams, day_minutes)
-    solution = solve(manager, routing, seconds)
-
-    if solution is None:
-        # Never leave the demo without a plan.
-        print("Solver found no plan; using the nearest site baseline instead.")
-        plan = P.greedy_plan(sites, travel, n_teams, day_minutes,
-                             lambda cur, feas: min(feas, key=lambda s: travel.at[cur, s]))
-    else:
-        teams = read_routes(manager, routing, solution, ids, n_teams)
-        plan = P.to_table(teams, sites)
+    plan = optimized_plan(sites, travel, n_teams, day_minutes, seconds)
 
     summary = P.summarize("optimized", plan, sites, travel)
     summary["solve_seconds"] = round(time.time() - start, 1)

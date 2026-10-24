@@ -13,6 +13,7 @@ STEPS = [
     "engine/baseline.py",
     "engine/optimizer.py",
     "engine/route_paths.py",
+    "engine/evaluate.py",
 ]
 
 for step in STEPS:

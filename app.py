@@ -188,6 +188,38 @@ if method and start is not None:
                                                  key=f"dl_{method}_{team_id}")
             st.code(text, language=None)
 
+robust_file, sens_file = OUTPUTS / "robustness.csv", OUTPUTS / "sensitivity.csv"
+if robust_file.exists() or sens_file.exists():
+    st.subheader("Robustness and sensitivity")
+    if robust_file.exists():
+        r = pd.read_csv(robust_file)
+        st.caption("1,000 simulated realities: each site is real with the chance given by its confidence. "
+                   "'Detector 25% worse' assumes the detector is overconfident. "
+                   "Ranges are the 5th to 95th percentile.")
+        show = pd.DataFrame({
+            "Reality": r["reality"],
+            "Method": r["method"].map(METHOD_LABELS),
+            "Real sites reached": [f"{m} ({a} to {b})" for m, a, b in
+                                   zip(r["real_sites_mean"], r["real_sites_p5"], r["real_sites_p95"])],
+            "Real value reached": [f"{m} ({a} to {b})" for m, a, b in
+                                   zip(r["real_value_mean"], r["real_value_p5"], r["real_value_p95"])],
+        })
+        st.dataframe(show, hide_index=True, width="stretch")
+        opt = r[r["method"] == "optimized"]
+        if "beats_nearest_pct" in opt:
+            st.caption("Dengai beats both baselines in "
+                       f"{opt['beats_nearest_pct'].min():.0f}% and {opt['beats_priority_pct'].min():.0f}% "
+                       "of simulated realities.")
+    if sens_file.exists():
+        s = pd.read_csv(sens_file)
+        st.caption("Each row changes one assumption and replans with every method.")
+        st.dataframe(s.rename(columns={
+            "assumption": "Assumption changed", "case": "Case",
+            "nearest_priority": "Nearest next", "priority_first_priority": "Priority next",
+            "optimized_priority": "Dengai", "gain_vs_best_baseline_pct": "Gain vs best baseline (%)",
+            "optimized_high_priority": "Dengai high priority reached"}),
+            hide_index=True, width="stretch")
+
 with st.expander("Top priority sites"):
     cols = [c for c in ["site_id", "site_type", "confidence", "buildings_nearby", "sites_nearby",
                         "exposure", "clustering", "priority"] if c in sites]
